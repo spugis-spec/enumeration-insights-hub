@@ -134,8 +134,8 @@ function AnalyticsPage() {
             <BarChart data={teams}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="team" tick={tick} /><YAxis tick={tick} /><Tooltip /><Legend />
-              <Bar dataKey="total" name="Total entries" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="avgPerEnumerator" name="Avg per enumerator" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="total" name="Total entries" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="avgPerEnumerator" name="Avg per enumerator" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -146,10 +146,10 @@ function AnalyticsPage() {
             <LineChart data={daily}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="date" tick={tick} /><YAxis tick={tick} /><Tooltip /><Legend />
-              <Line dataKey="AEDC" stroke="var(--chart-1)" dot={false} strokeWidth={2} />
-              <Line dataKey="BSS" stroke="var(--chart-2)" dot={false} strokeWidth={2} />
-              <Line dataKey="NYSC" stroke="var(--chart-3)" dot={false} strokeWidth={2} />
-              <Line dataKey="total" name="All teams" stroke="var(--primary)" dot={false} strokeWidth={2.5} strokeDasharray="5 3" />
+              <Line isAnimationActive={false} dataKey="AEDC" stroke="var(--chart-1)" dot={false} strokeWidth={2} />
+              <Line isAnimationActive={false} dataKey="BSS" stroke="var(--chart-2)" dot={false} strokeWidth={2} />
+              <Line isAnimationActive={false} dataKey="NYSC" stroke="var(--chart-3)" dot={false} strokeWidth={2} />
+              <Line isAnimationActive={false} dataKey="total" name="All teams" stroke="var(--primary)" dot={false} strokeWidth={2.5} strokeDasharray="5 3" />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -161,7 +161,7 @@ function AnalyticsPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis type="number" tick={tick} /><YAxis type="category" dataKey="feeder" tick={tick} width={110} />
               <Tooltip formatter={(v, _n, p) => [`${v} entries — ${(p.payload as { status: string }).status}`, "Feeder"]} />
-              <Bar dataKey="entries" fill="var(--chart-4)" radius={[0, 4, 4, 0]} />
+              <Bar isAnimationActive={false} dataKey="entries" fill="var(--chart-4)" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -172,9 +172,9 @@ function AnalyticsPage() {
             <AreaChart data={daily}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="date" tick={tick} /><YAxis tick={tick} allowDecimals={false} /><Tooltip /><Legend />
-              <Area dataKey="zero_aedc" name="AEDC" stackId="z" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.5} />
-              <Area dataKey="zero_bss" name="BSS" stackId="z" stroke="var(--chart-2)" fill="var(--chart-2)" fillOpacity={0.5} />
-              <Area dataKey="zero_nysc" name="NYSC" stackId="z" stroke="var(--chart-3)" fill="var(--chart-3)" fillOpacity={0.5} />
+              <Area isAnimationActive={false} dataKey="zero_aedc" name="AEDC" stackId="z" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.5} />
+              <Area isAnimationActive={false} dataKey="zero_bss" name="BSS" stackId="z" stroke="var(--chart-2)" fill="var(--chart-2)" fillOpacity={0.5} />
+              <Area isAnimationActive={false} dataKey="zero_nysc" name="NYSC" stackId="z" stroke="var(--chart-3)" fill="var(--chart-3)" fillOpacity={0.5} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -185,10 +185,10 @@ function AnalyticsPage() {
             <BarChart data={daily}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="date" tick={tick} /><YAxis tick={tick} /><Tooltip /><Legend />
-              <Bar dataKey="DSS" stackId="a" fill="var(--chart-1)" />
-              <Bar dataKey="HT" stackId="a" fill="var(--chart-2)" />
-              <Bar dataKey="LT" stackId="a" fill="var(--chart-3)" />
-              <Bar dataKey="Customers" stackId="a" fill="var(--chart-4)" />
+              <Bar isAnimationActive={false} dataKey="DSS" stackId="a" fill="var(--chart-1)" />
+              <Bar isAnimationActive={false} dataKey="HT" stackId="a" fill="var(--chart-2)" />
+              <Bar isAnimationActive={false} dataKey="LT" stackId="a" fill="var(--chart-3)" />
+              <Bar isAnimationActive={false} dataKey="Customers" stackId="a" fill="var(--chart-4)" />
             </BarChart>
           </ResponsiveContainer>
         </div>
