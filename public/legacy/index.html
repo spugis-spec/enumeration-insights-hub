@@ -9346,5 +9346,33 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+<script>
+/* Session persistence fix: keep admin signed in across page refreshes */
+(function(){
+  if (typeof firebase==='undefined' || !firebase.auth) return;
+  try { firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch(e){}
+  function restoreAdmin(user){
+    if (isAdminMode) return;
+    currentUser = user; isAdminMode = true;
+    document.body.classList.add('admin-mode');
+    document.getElementById('accessModal').classList.add('hidden');
+    document.getElementById('mainContent').style.display='block';
+    var b=document.getElementById('accessBadge'); b.textContent='🔑 Admin Mode';
+    b.className='px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800';
+    var abh=document.getElementById('accessBadgeHero'); if(abh) abh.innerHTML='🔑 Admin Mode';
+    ['data','mapping','dashboard','monthly'].forEach(function(t){var el=document.getElementById('content-'+t); if(el){el.classList.add('hidden'); el.style.display='none';}});
+    switchTab('data');
+    Promise.all([loadMappingsFromCloud(), loadPairingsFromCloud(), loadSavedDashboards(), loadFeederLookupFromCloud(), loadLastFidFromCloud(), loadFeederOverridesFromCloud(), loadFeederCompletionStatusFromCloud(), loadProvisionalFromCloud(), loadHistoryLinksFromCloud()]).then(function(){ renderSavedDatesList(); mpLoadSavedMonths(); });
+    syncTargetInputMode();
+  }
+  function start(){
+    firebase.auth().onAuthStateChanged(function(user){
+      if (user) restoreAdmin(user);
+      else if (isAdminMode) { currentUser=null; isAdminMode=false; document.body.classList.remove('admin-mode'); switchAccessMode(); }
+    });
+  }
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+</script>
 </body>
 </html>
