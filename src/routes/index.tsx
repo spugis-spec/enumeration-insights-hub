@@ -1,24 +1,25 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "AEDC GIS Enumeration Performance Dashboard" },
+      { name: "description", content: "Upload GIS enumeration data, generate daily reports, track enumerators and export styled Excel reports." },
+      { property: "og:title", content: "AEDC GIS Enumeration Performance Dashboard" },
+      { property: "og:description", content: "Daily and monthly GIS enumeration performance reporting for AEDC." },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
+// The full report workflow (uploads, rosters, pairings, report generation,
+// monthly tracking, Excel export) runs unchanged from the original dashboard.
 function Index() {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <iframe
+      src="/legacy/index.html"
+      title="AEDC GIS Enumeration Performance Report Dashboard"
+      className="block h-[calc(100vh-3.5rem)] w-full border-0"
+    />
   );
 }
