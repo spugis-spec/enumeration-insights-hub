@@ -52,7 +52,7 @@ function AnalyticsPage() {
   const daily = useMemo(
     () =>
       dates.map((d) => {
-        const r = dash![d];
+        const r = (dash![d] ?? ({} as Dash));
         const row: Record<string, number | string> = { date: d.slice(5) };
         let total = 0, zero = 0, dss = 0, ht = 0, lt = 0, cust = 0;
         GROUPS.forEach((g) => {
@@ -75,8 +75,8 @@ function AnalyticsPage() {
       GROUPS.map((g) => {
         let total = 0, people = new Set<string>();
         dates.forEach((d) => {
-          total += dash![d][g]?.totals?.total || 0;
-          (dash![d][g]?.results || []).forEach((r) => people.add(r.username));
+          total += (dash![d] ?? ({} as Dash))[g]?.totals?.total || 0;
+          ((dash![d] ?? ({} as Dash))[g]?.results || []).forEach((r) => people.add(r.username));
         });
         return { team: g.toUpperCase(), total, avgPerEnumerator: people.size ? Math.round(total / people.size) : 0 };
       }),
@@ -87,7 +87,7 @@ function AnalyticsPage() {
     const m = new Map<string, number>();
     dates.forEach((d) =>
       GROUPS.forEach((g) =>
-        (dash![d][g]?.results || []).forEach((r) => {
+        ((dash![d] ?? ({} as Dash))[g]?.results || []).forEach((r) => {
           if (r.savedFeeder) m.set(r.savedFeeder, (m.get(r.savedFeeder) || 0) + (r.total || 0));
         }),
       ),
