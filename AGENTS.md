@@ -13,3 +13,5 @@
 - The original report dashboard runs unchanged from `public/legacy/index.html` inside an iframe on `/`; port logic out of it only deliberately, because its workflows must stay identical.
 - Firebase (project `spugis`) is the backend, accessed through `src/lib/firebase.ts`; the React `AuthProvider` and the legacy page share the same origin so one Firebase sign-in persists across both.
 - Spreadsheet parsing for new pages runs in `src/lib/parse.worker.ts` so large files never block the UI.
+- Frontend operations pages share an in-memory WorkspaceProvider above the outlet so tab changes preserve temporary entries; they never write to a database or browser storage.
+- New operations routes disable SSR and consume the existing AuthProvider only for session display, preserving the application's existing authentication behavior.
