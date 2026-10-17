@@ -11,7 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
+import { Route as FieldManagerRouteImport } from './routes/field-manager'
 import { Route as MapRouteImport } from './routes/map'
+import { Route as MobileDevicesRouteImport } from './routes/mobile-devices'
+import { Route as ProjectionsRouteImport } from './routes/projections'
+import { Route as WeeklyReportRouteImport } from './routes/weekly-report'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -23,40 +27,98 @@ const AnalyticsRoute = AnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FieldManagerRoute = FieldManagerRouteImport.update({
+  id: '/field-manager',
+  path: '/field-manager',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MapRoute = MapRouteImport.update({
   id: '/map',
   path: '/map',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MobileDevicesRoute = MobileDevicesRouteImport.update({
+  id: '/mobile-devices',
+  path: '/mobile-devices',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectionsRoute = ProjectionsRouteImport.update({
+  id: '/projections',
+  path: '/projections',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WeeklyReportRoute = WeeklyReportRouteImport.update({
+  id: '/weekly-report',
+  path: '/weekly-report',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
+  '/field-manager': typeof FieldManagerRoute
   '/map': typeof MapRoute
+  '/mobile-devices': typeof MobileDevicesRoute
+  '/projections': typeof ProjectionsRoute
+  '/weekly-report': typeof WeeklyReportRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
+  '/field-manager': typeof FieldManagerRoute
   '/map': typeof MapRoute
+  '/mobile-devices': typeof MobileDevicesRoute
+  '/projections': typeof ProjectionsRoute
+  '/weekly-report': typeof WeeklyReportRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
+  '/field-manager': typeof FieldManagerRoute
   '/map': typeof MapRoute
+  '/mobile-devices': typeof MobileDevicesRoute
+  '/projections': typeof ProjectionsRoute
+  '/weekly-report': typeof WeeklyReportRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/analytics' | '/map'
+  fullPaths:
+    | '/'
+    | '/analytics'
+    | '/field-manager'
+    | '/map'
+    | '/mobile-devices'
+    | '/projections'
+    | '/weekly-report'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/analytics' | '/map'
-  id: '__root__' | '/' | '/analytics' | '/map'
+  to:
+    | '/'
+    | '/analytics'
+    | '/field-manager'
+    | '/map'
+    | '/mobile-devices'
+    | '/projections'
+    | '/weekly-report'
+  id:
+    | '__root__'
+    | '/'
+    | '/analytics'
+    | '/field-manager'
+    | '/map'
+    | '/mobile-devices'
+    | '/projections'
+    | '/weekly-report'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
+  FieldManagerRoute: typeof FieldManagerRoute
   MapRoute: typeof MapRoute
+  MobileDevicesRoute: typeof MobileDevicesRoute
+  ProjectionsRoute: typeof ProjectionsRoute
+  WeeklyReportRoute: typeof WeeklyReportRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -75,11 +137,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/field-manager': {
+      id: '/field-manager'
+      path: '/field-manager'
+      fullPath: '/field-manager'
+      preLoaderRoute: typeof FieldManagerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/map': {
       id: '/map'
       path: '/map'
       fullPath: '/map'
       preLoaderRoute: typeof MapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mobile-devices': {
+      id: '/mobile-devices'
+      path: '/mobile-devices'
+      fullPath: '/mobile-devices'
+      preLoaderRoute: typeof MobileDevicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projections': {
+      id: '/projections'
+      path: '/projections'
+      fullPath: '/projections'
+      preLoaderRoute: typeof ProjectionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/weekly-report': {
+      id: '/weekly-report'
+      path: '/weekly-report'
+      fullPath: '/weekly-report'
+      preLoaderRoute: typeof WeeklyReportRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -88,7 +178,11 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
+  FieldManagerRoute: FieldManagerRoute,
   MapRoute: MapRoute,
+  MobileDevicesRoute: MobileDevicesRoute,
+  ProjectionsRoute: ProjectionsRoute,
+  WeeklyReportRoute: WeeklyReportRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

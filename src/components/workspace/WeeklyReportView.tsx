@@ -1,0 +1,18 @@
+import { useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { exportCsv } from "@/lib/workspace-model";
+import { useWorkspace } from "./WorkspaceProvider";
+import { cell, DataTable, ExportButton, inputClass, Metrics, numberCell, SpreadsheetUpload, tdClass, WorkspacePage } from "./common";
+
+export function WeeklyReportView() {
+  const { weekly, setWeekly } = useWorkspace();
+  const [feeder, setFeeder] = useState("");
+  const [week, setWeek] = useState("");
+  const sum = (key: "previous" | "current" | "target") => weekly.reduce((s, r) => s + r[key], 0);
+  return <WorkspacePage title="Weekly Report" actions={<><SpreadsheetUpload onRows={rows => setWeekly(a => [...a, ...rows.map(r => ({ id: crypto.randomUUID(), feeder: cell(r, "feeder", "feedername"), previous: numberCell(r, "previous", "previousweek"), current: numberCell(r, "current", "currentweek", "captures"), target: numberCell(r, "target", "weeklytarget") })).filter(r => r.feeder)])} /><ExportButton disabled={!weekly.length} onClick={() => exportCsv(`weekly-report${week ? `-${week}` : ""}.csv`, [["Week starting", "Feeder", "Previous week", "This week", "Change", "Weekly target"], ...weekly.map(r => [week, r.feeder, r.previous, r.current, r.current - r.previous, r.target])])} /></>}>
+    <Metrics values={[["Feeders", weekly.length], ["This week", sum("current")], ["Previous week", sum("previous")], ["Weekly change", sum("current") - sum("previous")]]} />
+    <div className="flex flex-wrap items-end gap-4"><label className="grid gap-1 text-xs font-medium">Week starting<input aria-label="Week starting" type="date" className={inputClass} value={week} onChange={e => setWeek(e.target.value)} /></label><form className="flex flex-wrap gap-2" onSubmit={e => { e.preventDefault(); setWeekly(rows => [...rows, { id: crypto.randomUUID(), feeder: feeder.trim(), previous: 0, current: 0, target: 0 }]); setFeeder(""); }}><input aria-label="Weekly feeder" required placeholder="Feeder name" className={inputClass} value={feeder} onChange={e => setFeeder(e.target.value)} /><Button type="submit"><Plus />Add feeder</Button></form></div>
+    <DataTable headers={["Feeder", "Previous week", "This week", "Change", "Weekly target", "Target coverage", ""]} empty={!weekly.length}>{weekly.map(r => <tr key={r.id}><td className={`${tdClass} font-semibold`}>{r.feeder}</td>{(["previous", "current"] as const).map(key => <td key={key} className={tdClass}><input aria-label={`${r.feeder} ${key}`} type="number" min="0" className={`${inputClass} w-28`} value={r[key]} onChange={e => setWeekly(rows => rows.map(a => a.id === r.id ? { ...a, [key]: Math.max(0, Number(e.target.value) || 0) } : a))} /></td>)}<td className={tdClass}>{r.current - r.previous >= 0 ? "+" : ""}{r.current - r.previous}</td><td className={tdClass}><input aria-label={`${r.feeder} weekly target`} type="number" min="0" className={`${inputClass} w-28`} value={r.target} onChange={e => setWeekly(rows => rows.map(a => a.id === r.id ? { ...a, target: Math.max(0, Number(e.target.value) || 0) } : a))} /></td><td className={tdClass}>{r.target ? `${Math.round(r.current / r.target * 100)}%` : "—"}<progress aria-label={`${r.feeder} target coverage`} className="mt-1 block h-2 w-28 accent-primary" max={r.target || 1} value={r.current} /></td><td className={tdClass}><Button variant="ghost" size="icon" aria-label={`Remove ${r.feeder}`} title="Remove feeder" onClick={() => setWeekly(rows => rows.filter(a => a.id !== r.id))}><Trash2 /></Button></td></tr>)}</DataTable>
+  </WorkspacePage>;
+}

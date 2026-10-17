@@ -13,6 +13,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { AuthProvider } from "../lib/auth";
 import { AppHeader } from "../components/AppHeader";
+import { WorkspaceProvider } from "../components/workspace/WorkspaceProvider";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -124,7 +125,7 @@ function RootComponent() {
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <AuthProvider>
         <AppHeader />
-        <Outlet />
+        <WorkspaceProvider><Outlet /></WorkspaceProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
