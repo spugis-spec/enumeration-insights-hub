@@ -13,7 +13,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { AuthProvider } from "../lib/auth";
 import { AppHeader } from "../components/AppHeader";
-import { WorkspaceProvider } from "../components/workspace/WorkspaceProvider";
+import { Toaster } from "@/components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -94,7 +94,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" },
+      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" },
     ],
   }),
   shellComponent: RootShell,
@@ -125,7 +125,8 @@ function RootComponent() {
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <AuthProvider>
         <AppHeader />
-        <WorkspaceProvider><Outlet /></WorkspaceProvider>
+        <Outlet />
+        <Toaster richColors position="top-right" />
       </AuthProvider>
     </QueryClientProvider>
   );

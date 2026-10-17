@@ -13,8 +13,6 @@ export const Route = createFileRoute("/analytics")({
       { name: "description", content: "Team comparison, daily velocity, feeder completion and zero-entry monitoring from saved enumeration reports." },
       { property: "og:title", content: "Performance Analytics — AEDC Enumeration" },
       { property: "og:description", content: "Interactive charts built from saved daily GIS enumeration reports." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: AnalyticsPage,

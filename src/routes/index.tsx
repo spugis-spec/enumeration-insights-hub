@@ -7,8 +7,6 @@ export const Route = createFileRoute("/")({
       { name: "description", content: "Upload GIS enumeration data, generate daily reports, track enumerators and export styled Excel reports." },
       { property: "og:title", content: "AEDC GIS Enumeration Performance Dashboard" },
       { property: "og:description", content: "Daily and monthly GIS enumeration performance reporting for AEDC." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: Index,
