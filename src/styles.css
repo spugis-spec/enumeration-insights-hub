@@ -21,6 +21,11 @@
 @theme inline {
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Space Mono", ui-monospace, monospace;
+  --font-display: "Barlow Condensed", "DM Sans", sans-serif;
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -81,6 +86,10 @@
   --accent-foreground: oklch(0.208 0.042 265.755);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
+  --success: oklch(0.6 0.16 150);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.75 0.16 70);
+  --warning-foreground: oklch(0.2 0.04 70);
   --border: oklch(0.929 0.013 255.508);
   --input: oklch(0.929 0.013 255.508);
   --ring: oklch(0.704 0.04 256.788);
@@ -142,5 +151,22 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+  }
+}
+
+/*
+ * Weekly Report keeps the look of the original Feeder Dashboard. The hub theme changes the
+ * default font, border colour and corner radii, so they are reset inside this wrapper only.
+ */
+@layer base {
+  .weekly-root {
+    --radius: 0.5rem;
+    font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    color: #000;
+  }
+  .weekly-root *,
+  .weekly-root ::before,
+  .weekly-root ::after {
+    border-color: currentColor;
   }
 }

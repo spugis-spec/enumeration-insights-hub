@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mobile Device Collection &amp; Tracking Portal</title>
+<style>
+  :root{
+    --bg:#eef4ff; --panel:#ffffff; --panel2:#f4f8fd; --line:#cfdcf5;
+    --ink:#16305c; --muted:#5b7089; --accent:#2a6ae0; --accent2:#1b9c85;
+    --danger:#e5484d; --ok:#2fa36b; --radius:14px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.45}
+  header{background:linear-gradient(135deg,#12377e,#2a6ae0);padding:18px 16px;border-bottom:3px solid #ffffff}
+  header h1{margin:0;font-size:1.15rem;letter-spacing:.3px;color:#fff}
+  header p{margin:4px 0 0;color:rgba(255,255,255,.78);font-size:.8rem;text-transform:uppercase;letter-spacing:1px}
+  main{max-width:920px;margin:0 auto;padding:14px}
+  nav{display:flex;gap:6px;overflow-x:auto;padding:10px;margin-bottom:4px;
+    background:#eef4ff;border:1px solid #cddcfa;border-radius:14px}
+  nav button{flex:0 0 auto;background:#fff;color:#12377e;border:1px solid #cddcfa;
+    padding:9px 14px;border-radius:999px;font-size:.85rem;font-weight:600;cursor:pointer}
+  nav button.active{background:#12377e;color:#fff;border-color:#12377e}
+  nav button#signOut{background:#fff;color:#c0292d;border-color:#f3c9c9}
+  .idcol{}
+  #lTable.hideid .idcol, #lTable.hideid .admincol{display:none}
+  .del-btn{background:rgba(229,72,77,.12);color:var(--danger);border:1px solid rgba(229,72,77,.4);
+    padding:5px 10px;border-radius:8px;font-size:.75rem;font-weight:600;cursor:pointer}
+  .del-btn:hover{background:rgba(229,72,77,.22)}
+  .selfinfo{display:none;margin-top:10px;padding:11px 12px;border-radius:10px;font-size:.85rem;
+    background:rgba(47,163,107,.15);border:1px solid var(--ok);color:var(--ink)}
+  .selfinfo.show{display:block}
+  section{display:none;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px}
+  section.active{display:block}
+  h2{margin:0 0 4px;font-size:1rem}
+  .hint{color:var(--muted);font-size:.8rem;margin:0 0 14px}
+  label{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:12px 0 5px}
+  input,select,textarea{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--ink);font-size:16px}
+  button.act{width:100%;margin-top:16px;padding:14px;border:0;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;
+    background:var(--accent);color:#fff}
+  button.act.green{background:var(--accent2);color:#fff}
+  button.small{width:auto;margin:0;padding:8px 12px;font-size:.8rem;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--ink);cursor:pointer}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row > *{flex:1 1 160px}
+  .msg{margin-top:14px;padding:12px;border-radius:10px;font-size:.9rem;display:none}
+  .msg.show{display:block}
+  .msg.ok{background:rgba(47,163,107,.15);border:1px solid var(--ok)}
+  .msg.err{background:rgba(229,72,77,.15);border:1px solid var(--danger)}
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:12px}
+  table{width:100%;border-collapse:collapse;font-size:.85rem;min-width:560px}
+  th,td{padding:10px 8px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.6px}
+  .pill{padding:3px 9px;border-radius:999px;font-size:.72rem;font-weight:700}
+  .pill.out{background:rgba(244,163,0,.16);color:#a35b00}
+  .pill.in{background:rgba(47,163,107,.16);color:#177a4d}
+  .stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .stat{flex:1 1 100px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .stat b{display:block;font-size:1.5rem}
+  .stat span{color:var(--muted);font-size:.72rem;text-transform:uppercase}
+  footer{text-align:center;color:var(--muted);font-size:.75rem;padding:20px}
+  details{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:14px}
+  summary{cursor:pointer;font-weight:600;font-size:.88rem}
+  /* Login gate */
+  body.locked header, body.locked main, body.locked footer{display:none}
+  body.unlocked #gate{display:none}
+  #gate{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:18px;
+    background:radial-gradient(1200px 600px at 20% 0%,#2a6ae0,#0c3585 60%,#08245c);overflow:auto}
+  .card{width:100%;max-width:430px;background:#fff;color:#123;border-radius:20px;padding:30px 26px;
+    box-shadow:0 22px 50px rgba(0,0,0,.32);text-align:center;animation:rise .45s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+  .brand{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 14px}
+  .brand .logo{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#12377e,#2a6ae0);
+    color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:1rem;letter-spacing:-1px}
+  .brand span{font-size:1.6rem;font-weight:900;letter-spacing:-1px;color:#12377e}
+  .card h2{font-size:1.3rem;color:#12377e;margin:0 0 6px;font-weight:800;line-height:1.25}
+  .card p.sub{color:#5b6b80;font-size:.9rem;margin:0 0 18px}
+  .card label{display:block;text-align:left;text-transform:none;letter-spacing:0;font-size:.9rem;
+    font-weight:700;color:#213a5c;margin:0 0 6px}
+  .card input{background:#fff;color:#123;border:1px solid #cfd8e3;border-radius:10px;padding:13px;transition:.18s}
+  .card input:focus{outline:0;border-color:#2a6ae0;box-shadow:0 0 0 4px rgba(42,106,224,.15)}
+  .card button{width:100%;margin-top:16px;padding:14px;border:0;border-radius:10px;background:#12377e;color:#fff;
+    font-weight:800;letter-spacing:1px;font-size:1rem;cursor:pointer;transition:.18s}
+  .card button:hover{background:#0d2a63;transform:translateY(-1px)}
+  .card button:disabled{background:#a9b6c9;cursor:not-allowed;transform:none}
+  .card button.ghost{background:transparent;color:#5b6b80;font-weight:600;letter-spacing:0;font-size:.85rem;margin-top:10px;padding:8px}
+  .card button.ghost:hover{background:#f1f4f9;color:#12377e;transform:none}
+  .card .msg{text-align:left}
+  .card .foot{color:#9aa8b8;font-size:.78rem;margin-top:20px}
+  .idcard{display:none;align-items:center;gap:12px;text-align:left;margin-top:14px;padding:12px;
+    border-radius:12px;background:#eef4ff;border:1px solid #cddcfa;animation:rise .3s ease both}
+  .idcard.show{display:flex}
+  .idcard .av{width:42px;height:42px;border-radius:50%;background:#12377e;color:#fff;font-weight:800;
+    display:flex;align-items:center;justify-content:center;flex:0 0 42px}
+  .idcard b{display:block;color:#12377e;font-size:.95rem}
+  .idcard small{color:#5b6b80;font-size:.8rem}
+  .gstats{display:flex;gap:8px;margin-top:16px}
+  .gstats div{flex:1;background:#f4f7fc;border:1px solid #e2e9f4;border-radius:12px;padding:10px 6px}
+  .gstats b{display:block;color:#12377e;font-size:1.25rem}
+  .gstats small{color:#7b8aa0;font-size:.68rem;text-transform:uppercase;letter-spacing:.5px}
+  .who{margin-top:16px;display:inline-block;background:#eef4ff;color:#12377e;
+    font-size:.78rem;padding:7px 12px;border-radius:999px;border:1px solid #cddcfa}
+  .who b{color:#12377e}
+  .notice{margin-top:10px;padding:10px;border-radius:10px;font-size:.85rem;display:none}
+  .notice.show{display:block;background:rgba(229,72,77,.15);border:1px solid var(--danger)}
+  .notice.show.free{background:rgba(47,163,107,.15);border:1px solid var(--ok)}
+
+  /* Availability list — colour works on mobile too (option colours are ignored by
+     iOS/Android native pickers, so we render our own colour-coded list). */
+  .devlist{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+  .devrow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+    border:1px solid var(--line);background:var(--panel2);font-size:.88rem;font-weight:600}
+  .devrow .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .devrow .tag{flex:0 0 auto;font-size:.7rem;font-weight:800;letter-spacing:.4px;
+    padding:3px 9px;border-radius:999px;text-transform:uppercase}
+  .devrow.free{border-color:var(--ok);background:rgba(47,163,107,.12);color:#136c43}
+  .devrow.free .tag{background:rgba(47,163,107,.22);color:#0f7a4a}
+  .devrow.busy{border-color:var(--danger);background:rgba(229,72,77,.10);color:#a3282c}
+  .devrow.busy .tag{background:rgba(229,72,77,.2);color:#c0292d}
+  .devrow.sel{box-shadow:0 0 0 3px rgba(42,106,224,.22)}
+  .devrow input[type=checkbox]{width:auto;flex:0 0 auto;transform:scale(1.35);margin:0 2px 0 0}
+  .devrow small{display:block;font-weight:500;font-size:.74rem;color:var(--muted);white-space:normal}
+  .selbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+  .selcount{font-size:.8rem;color:var(--muted);font-weight:700}
+  select option.opt-free{color:#0f7a4a}
+  select option.opt-busy{color:#c0292d}
+</style>
+</head>
+<body class="locked">
+
+<div id="gate">
+  <div class="card">
+    <p class="brand"><span class="logo">AEDC</span><span>Device Portal</span></p>
+    <h2>Mobile Device Collection &amp; Tracking</h2>
+    <p class="sub" id="gGreet">Enter your Staff ID card number to sign out or return a device.</p>
+    <label for="gId">Staff ID card number</label>
+    <input id="gId" autocomplete="off" placeholder="e.g. AEDC/1001" />
+    <div class="idcard" id="gCard">
+      <div class="av" id="gAv">--</div>
+      <div><b id="gName"></b><small id="gMeta"></small></div>
+    </div>
+    <div class="gstats" id="gStats"></div>
+    <button id="gBtn" disabled>CONTINUE</button>
+    <button class="ghost" id="gAdminToggle">Admin login</button>
+    <div id="gAdminBox" style="display:none">
+      <label for="gPin" style="margin-top:10px">Admin PIN</label>
+      <input id="gPin" type="password" placeholder="Admin PIN" />
+      <button id="gAdminBtn">Sign in as admin</button>
+    </div>
+    <div class="msg" id="gMsg"></div>
+    <p class="foot" id="gFbStat">Connecting to the cloud…</p>
+    <p class="foot">Device Collection &amp; Tracking Portal</p>
+  </div>
+</div>
+
+
+<header>
+  <h1>Mobile Device Collection &amp; Tracking Portal</h1>
+  <p>GIS Enumeration &amp; Asset Mapping</p>
+  <div class="who" id="hWho"></div>
+</header>
+
+<main>
+  <nav>
+    <button class="active" data-tab="collect">Collect Device</button>
+    <button data-tab="submit">Return Device</button>
+    <button data-tab="log">Daily Log</button>
+    <button data-tab="admin">Admin</button>
+    <button id="signOut">Sign out</button>
+  </nav>
+
+  <!-- COLLECT -->
+  <section id="collect" class="active">
+    <h2>Sign out a device</h2>
+    <p class="hint">Enter your ID card number and select the device you are collecting.</p>
+    <div class="msg" id="cStartNote"></div>
+    <div id="cIdWrap">
+      <label for="cId">Staff ID card number</label>
+      <input id="cId" inputmode="numeric" autocomplete="off" placeholder="e.g. AEDC/1234" />
+      <div id="cWho" class="hint" style="margin:6px 0 0"></div>
+    </div>
+    <div class="selfinfo" id="cSelfInfo"></div>
+    <label for="cDev">Device to collect</label>
+    <select id="cDev"><option value="">-- select device --</option></select>
+    <div class="devlist" id="cDevList"></div>
+    <div class="notice" id="cAvail"></div>
+    <label for="cNote">Purpose / area (optional)</label>
+    <input id="cNote" placeholder="e.g. Kubwa Feeder enumeration" />
+    <button class="act" id="cBtn">Confirm Collection</button>
+    <div class="msg" id="cMsg"></div>
+  </section>
+
+
+  <!-- SUBMIT -->
+  <section id="submit">
+    <h2>Receive / return devices</h2>
+    <p class="hint">Restricted to the authorised receiving officer. Two-step verification required.</p>
+    <div id="sRecWrap">
+      <label for="sRec">Receiving officer ID card number</label>
+      <input id="sRec" autocomplete="off" placeholder="Officer ID" />
+    </div>
+    <div class="selfinfo" id="sRecSelfInfo"></div>
+    <label for="sPin">Receiving officer PIN (2nd authentication)</label>
+    <input id="sPin" type="password" inputmode="numeric" placeholder="PIN" />
+    <button class="small" id="sUnlock" style="margin-top:14px">Unlock returns</button>
+    <div class="msg" id="sMsg"></div>
+    <div id="sPanel" style="display:none">
+      <label for="sSub">Submitting staff ID card number</label>
+      <input id="sSub" autocomplete="off" placeholder="Staff returning the device(s)" />
+      <div id="sSubWho" class="hint" style="margin:6px 0 0"></div>
+      <label>Outstanding devices — tick every device being returned</label>
+      <div class="selbar">
+        <button class="small" type="button" id="sSelMine">Select all for this staff ID</button>
+        <button class="small" type="button" id="sSelNone">Clear selection</button>
+        <span class="selcount" id="sCount">0 selected</span>
+      </div>
+      <div class="devlist" id="sDevList"></div>
+      <label><input type="checkbox" id="sChk" style="width:auto;margin-right:8px" />All ticked devices physically received &amp; checked</label>
+      <button class="act green" id="sBtn">Confirm Return</button>
+      <div class="msg" id="sMsg2"></div>
+    </div>
+  </section>
+
+  <!-- LOG -->
+  <section id="log">
+    <h2>Daily collection log</h2>
+    <p class="hint">View every device signed out on a date, and what is still outstanding.</p>
+    <div class="row">
+      <div><label for="lDate">Date</label><input type="date" id="lDate" /></div>
+      <div><label for="lFilter">Status</label>
+        <select id="lFilter"><option value="all">All</option><option value="out">Outstanding</option><option value="in">Returned</option></select>
+      </div>
+    </div>
+    <div class="stats" id="lStats"></div>
+    <div class="tablewrap"><table id="lTable">
+      <thead><tr><th>Device</th><th>Collected by</th><th class="idcol">ID card</th><th>Phone</th><th>Out</th><th>Returned</th><th>Submitted by</th><th>Received by</th><th>Status</th><th>Purpose</th><th class="admincol">Action</th></tr></thead>
+      <tbody></tbody></table></div>
+    <button class="small" id="lCsv" style="margin-top:14px">Download CSV for this date</button>
+  </section>
+
+  <!-- ADMIN -->
+  <section id="admin">
+    <h2>Back-end records</h2>
+    <p class="hint">Staff roster, device register and full database.</p>
+    <label for="aPin">Admin PIN</label>
+    <div class="row"><input id="aPin" type="password" placeholder="Admin PIN" /><button class="small" id="aBtn">Open</button></div>
+    <div id="aPanel" style="display:none">
+      <label for="aStaff">Staff roster — one per line: IDcard, Full name, Phone</label>
+      <textarea id="aStaff" rows="7"></textarea>
+      <div class="row" style="align-items:center">
+        <div><label for="aStaffFile">Bulk import staff (CSV: IDcard, Name, Phone)</label><input type="file" id="aStaffFile" accept=".csv,text/csv" /></div>
+        <div><label><input type="checkbox" id="aStaffAppend" style="width:auto;margin-right:8px" checked />Add to existing list</label></div>
+      </div>
+      <label for="aDevs">Device register — one device name per line</label>
+      <textarea id="aDevs" rows="6"></textarea>
+      <div class="row" style="align-items:center">
+        <div><label for="aDevFile">Bulk import devices (CSV: device name in first column)</label><input type="file" id="aDevFile" accept=".csv,text/csv" /></div>
+        <div><label><input type="checkbox" id="aDevAppend" style="width:auto;margin-right:8px" checked />Add to existing list</label></div>
+      </div>
+      <div class="row">
+        <div><label for="aRec">Receiving officer ID(s), comma separated</label><input id="aRec" /></div>
+        <div><label for="aRpin">Receiving officer PIN</label><input id="aRpin" /></div>
+        <div><label for="aApin">Admin login PIN</label><input id="aApin" /></div>
+      </div>
+      <div class="row">
+        <div><label for="aStart">Earliest sign-out time (devices cannot be collected before this)</label><input id="aStart" type="time" /></div>
+      </div>
+      <button class="act" id="aSave">Save settings</button>
+      <details open>
+        <summary>Cloud database (Firebase)</summary>
+        <p class="hint" style="margin-top:8px">Paste the <b>firebaseConfig</b> object from your Firebase project (Project settings → Your apps → Web app). Staff, devices and every collection/return are then stored in Firestore and shared live across all phones.</p>
+        <textarea id="aFb" rows="8" placeholder='{ "apiKey": "...", "authDomain": "yourapp.firebaseapp.com", "projectId": "yourapp", "appId": "..." }'></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="small" id="aFbSave">Connect &amp; sync</button>
+          <button class="small" id="aFbPush">Upload current data to cloud</button>
+          <button class="small" id="aFbOff">Disconnect</button>
+        </div>
+        <div class="hint" id="aFbStat" style="margin-top:8px">Connecting to cloud database…</div>
+      </details>
+
+      <details>
+        <summary>Full database (all dates)</summary>
+        <div class="tablewrap"><table id="aTable">
+          <thead><tr><th>Date</th><th>Device</th><th>Collected by</th><th>Out</th><th>Returned</th><th>Submitted by</th><th>Received by</th></tr></thead><tbody></tbody></table></div>
+        <div class="row" style="margin-top:12px">
+          <button class="small" id="aCsv">Export all records (CSV)</button>
+          <button class="small" id="aWipe">Clear all records</button>
+        </div>
+      </details>
+      <details>
+        <summary>Optional: sync to a Google Sheet</summary>
+        <p class="hint" style="margin-top:8px">Paste a Google Apps Script Web App URL. Every collection/return will also be POSTed there so the master database lives in your Sheet.</p>
+        <input id="aUrl" placeholder="https://script.google.com/macros/s/.../exec" />
+        <button class="small" id="aUrlSave" style="margin-top:10px">Save endpoint</button>
+      </details>
+      <div class="msg" id="aMsg"></div>
+    </div>
+  </section>
+</main>
+<footer>Records are saved in this browser and, when Firebase is connected, in your cloud database.</footer>
+
+<script>
+(function(){
+  var K='smdcp_v1';
+  var DEF={
+    staff:[["AEDC/1001","Wale Adeyemi","08030000001"],["AEDC/1002","Linda Okoro","08030000002"],["AEDC/1003","Musa Ibrahim","08030000003"]],
+    devices:["Wale Device","Linda Device","Musa Device","Field Tablet 01"],
+    receivers:["AEDC/1003"], url:"", startTime:"08:00", fb:"{\"apiKey\":\"AIzaSyA_Ql8LLNx4jf8o6H89u9iwSAmeZflj-hs\",\"authDomain\":\"spugis.firebaseapp.com\",\"projectId\":\"spugis\",\"storageBucket\":\"spugis.firebasestorage.app\",\"messagingSenderId\":\"295940607308\",\"appId\":\"1:295940607308:web:5ad07c96ab8ede791d13e9\",\"measurementId\":\"G-M1TBHGMV5V\"}", records:[]
+  };
+  var db, CURRENT=null;
+  try{ db=JSON.parse(localStorage.getItem(K))||JSON.parse(JSON.stringify(DEF)); }
+  catch(e){ db=JSON.parse(JSON.stringify(DEF)); }
+  if(!db.startTime) db.startTime='08:00'; /* earliest time devices may be signed out */
+  if(!db.fb) db.fb=DEF.fb; /* fall back to built-in Firebase config when none saved */
+  function save(){ try{localStorage.setItem(K,JSON.stringify(db));}catch(e){} }
+
+  function $(i){return document.getElementById(i)}
+  function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+  function clock(){var d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+  function norm(s){return String(s||'').trim().toUpperCase()}
+  function findStaff(id){id=norm(id);for(var i=0;i<db.staff.length;i++){if(norm(db.staff[i][0])===id)return db.staff[i]}return null}
+  function hideId(){return '\u2022\u2022\u2022\u2022'}
+
+  function msg(el,text,ok){el.textContent=text;el.className='msg show '+(ok?'ok':'err');}
+  function push(rec){
+    if(!db.url) return;
+    try{ fetch(db.url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(rec)}); }catch(e){}
+  }
+
+  /* ---------- Firebase (Firestore) cloud database ---------- */
+  var FS=null, fbReady=false, PAPP=null; /* named Firebase app: keeps this portal's staff/PIN session separate from the hub's sign-in */
+  function fbStat(t){ var el=$('aFbStat'); if(el) el.textContent=t; var g=$('gFbStat'); if(g) g.textContent=t; }
+  function loadScript(src){ return new Promise(function(res,rej){
+    var s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+  function parseCfg(txt){
+    txt=String(txt||'').trim();
+    if(!txt) return null;
+    var i=txt.indexOf('{'), j=txt.lastIndexOf('}');
+    if(i<0||j<0) return null;
+    txt=txt.slice(i,j+1);
+    try{ return JSON.parse(txt); }catch(e){}
+    try{ return (new Function('return ('+txt+')'))(); }catch(e){ return null; }
+  }
+  function fbConnect(quiet){
+    var cfg=parseCfg(db.fb);
+    if(!cfg||!cfg.projectId){ if(!quiet) fbStat('Could not read that Firebase config — paste the whole firebaseConfig object.'); return; }
+    fbStat('Connecting to '+cfg.projectId+'…');
+    var base='https://www.gstatic.com/firebasejs/10.12.2/';
+    var chain = window.firebase ? Promise.resolve()
+      : loadScript(base+'firebase-app-compat.js').then(function(){
+          return Promise.all([
+            loadScript(base+'firebase-firestore-compat.js'),
+            loadScript(base+'firebase-auth-compat.js'),
+          ]);
+        });
+    chain.then(function(){
+      PAPP=window.firebase.apps.filter(function(a){return a.name==='device-portal'})[0] || window.firebase.initializeApp(cfg,'device-portal');
+      FS=PAPP.firestore();
+      return PAPP.auth().signInAnonymously();
+    }).then(function(){
+      fbReady=true;
+      fbStat('Connected to '+cfg.projectId+' — syncing live.');
+      FS.collection('portal').doc('settings').onSnapshot(function(d){
+        var v=d.data(); if(!v) return;
+        if(v.staff) db.staff=v.staff.map(function(s){return [s.idcard,s.name,s.phone]});
+        if(v.devices) db.devices=v.devices;
+        if(v.receivers) db.receivers=v.receivers;
+        if(v.startTime) db.startTime=v.startTime;
+        save(); fillDevices(); gateStats(); startNotice();
+      },function(e){ fbStat('Cloud read error: '+e.message); });
+      FS.collection('records').onSnapshot(function(sn){
+        var a=[]; sn.forEach(function(d){ a.push(d.data()); });
+        a.sort(function(x,y){ return (x.date+x.outTime) < (y.date+y.outTime) ? -1 : 1; });
+        db.records=a; save(); fillDevices(); fillOutstanding(); renderLog(); gateStats(); renderAdminTable();
+      },function(e){ fbStat('Cloud read error: '+e.message); });
+    }).catch(function(e){ fbStat('Could not load Firebase: '+(e.message||e)); });
+  }
+  function fbSaveRecord(rec){ if(fbReady&&FS) FS.collection('records').doc(rec.id).set(JSON.parse(JSON.stringify(rec))).catch(function(e){fbStat('Cloud write error: '+e.message)}); }
+  var ADMIN_EMAIL='admin@device-portal.local';
+  var RECEIVER_EMAIL='receiver@device-portal.local';
+  function authErr(e){
+    var c=e&&e.code;
+    if(c==='auth/wrong-password'||c==='auth/invalid-credential'||c==='auth/invalid-login-credentials') return 'Incorrect PIN.';
+    if(c==='auth/too-many-requests') return 'Too many attempts — wait a bit and try again.';
+    if(c==='auth/user-not-found') return 'No PIN has been set up yet in Firebase Authentication.';
+    return (e&&e.message)||'Sign-in failed.';
+  }
+  function fbSaveSettings(){
+    if(!(fbReady&&FS)) return;
+    FS.collection('portal').doc('settings').set({
+      staff: db.staff.map(function(s){return {idcard:s[0]||'',name:s[1]||'',phone:s[2]||''}}),
+      devices: db.devices, receivers: db.receivers, startTime: db.startTime||'08:00'
+    }).then(function(){ fbStat('Settings saved to cloud.'); }).catch(function(e){ fbStat('Cloud write error: '+e.message); });
+  }
+  function fbPushAll(){
+    if(!(fbReady&&FS)) return fbStat('Connect to Firebase first.');
+    fbSaveSettings();
+    for(var i=0;i<db.records.length;i++) fbSaveRecord(db.records[i]);
+    fbStat('Uploaded '+db.records.length+' records + settings to cloud.');
+  }
+
+  /* ---------- CSV import ---------- */
+  function parseCsv(text){
+    var lines=String(text).replace(/\r/g,'').split('\n'), out=[];
+    for(var i=0;i<lines.length;i++){
+      var l=lines[i].trim(); if(!l) continue;
+      var cells=l.split(',').map(function(c){return c.trim().replace(/^"|"$/g,'')});
+      if(i===0 && /id\s*card|idcard|staff\s*id|device/i.test(l) && /name|phone|device/i.test(l)) continue;
+      out.push(cells);
+    }
+    return out;
+  }
+  function readFile(input,cb){
+    var f=input.files&&input.files[0]; if(!f) return;
+    var r=new FileReader(); r.onload=function(){ cb(parseCsv(r.result)); input.value=''; }; r.readAsText(f);
+  }
+
+
+
+  // tabs
+  var tabs=document.querySelectorAll('nav button[data-tab]');
+  for(var t=0;t<tabs.length;t++){tabs[t].onclick=function(){
+    for(var i=0;i<tabs.length;i++){tabs[i].classList.remove('active');document.getElementById(tabs[i].dataset.tab).classList.remove('active')}
+    this.classList.add('active');$(this.dataset.tab).classList.add('active');
+    if(this.dataset.tab==='log')renderLog();
+    if(this.dataset.tab==='submit')fillOutstanding();
+  }}
+
+  function holderOf(dev){
+    for(var i=db.records.length-1;i>=0;i--){var r=db.records[i];if(r.device===dev&&!r.inTime)return r}
+    return null;
+  }
+  function outstandingFor(idcard){
+    idcard=norm(idcard);
+    for(var i=db.records.length-1;i>=0;i--){var r=db.records[i];if(!r.inTime&&norm(r.idcard)===idcard)return r}
+    return null;
+  }
+  function fillDevices(){
+    var s=$('cDev'), keep=s.value; s.innerHTML='<option value="">-- select device --</option>';
+    var free=[], busy=[], i, h;
+    for(i=0;i<db.devices.length;i++){ h=holderOf(db.devices[i]); (h?busy:free).push([db.devices[i],h]); }
+    function group(label, arr, cls, mark, suffix){
+      if(!arr.length) return;
+      var g=document.createElement('optgroup'); g.label=label;
+      for(var k=0;k<arr.length;k++){
+        var o=document.createElement('option'); o.value=arr[k][0];
+        o.textContent=mark+' '+arr[k][0]+suffix;
+        o.className=cls; o.style.color=(cls==='opt-busy'?'#c0292d':'#0f7a4a'); o.style.fontWeight='600';
+        g.appendChild(o);
+      }
+      s.appendChild(g);
+    }
+    group('\u2705 Available', free, 'opt-free', '\u2705', ' \u2014 available');
+    group('\u26D4 Unavailable (signed out)', busy, 'opt-busy', '\u26D4', ' \u2014 UNAVAILABLE');
+    s.value=keep;
+    renderDeviceList();
+    availability();
+  }
+  /* Native mobile pickers ignore option colours, so we also render our own
+     colour-coded availability list that looks identical on phone and desktop. */
+  function renderDeviceList(){
+    var wrap=$('cDevList'); if(!wrap) return;
+    var sel=$('cDev').value, html='';
+    for(var i=0;i<db.devices.length;i++){
+      var d=db.devices[i], h=holderOf(d);
+      html+='<div class="devrow '+(h?'busy':'free')+(sel===d?' sel':'')+'" data-dev="'+esc(d)+'">'+
+        '<span class="nm">'+esc(d)+(h?'<small>With '+esc(h.name)+' \u00b7 '+esc(h.idcard)+' since '+esc(h.date)+' '+esc(h.outTime)+'</small>':'')+'</span>'+
+        '<span class="tag">'+(h?'Unavailable':'Available')+'</span></div>';
+    }
+    wrap.innerHTML=html||'<div class="hint">No devices in the register yet.</div>';
+  }
+  function esc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function availability(){
+    var n=$('cAvail'), dev=$('cDev').value;
+    if(!dev){ n.className='notice'; n.textContent=''; return; }
+    var h=holderOf(dev);
+    if(h){ n.className='notice show';
+      n.textContent='⚠ '+dev+' is not available. It was signed out by '+h.name+' ('+h.idcard+', '+h.phone+') on '+h.date+' at '+h.outTime+' and has not been returned yet.'; }
+    else { n.className='notice show free'; n.textContent='✔ '+dev+' is available for collection.'; }
+  }
+  $('cDev').addEventListener('change',function(){ availability(); renderDeviceList(); });
+  document.addEventListener('click',function(e){
+    var row=e.target.closest?e.target.closest('#cDevList .devrow'):null;
+    if(!row) return;
+    $('cDev').value=row.getAttribute('data-dev'); availability(); renderDeviceList();
+  });
+  function fillOutstanding(){
+    var wrap=$('sDevList'); if(!wrap) return;
+    var checked=selectedReturnIds(), html='', n=0;
+    for(var i=0;i<db.records.length;i++){ var r=db.records[i];
+      if(r.inTime) continue; n++;
+      html+='<label class="devrow busy"><input type="checkbox" class="sdev-chk" value="'+esc(r.id)+'"'+
+        (checked.indexOf(r.id)>=0?' checked':'')+' />'+
+        '<span class="nm">'+esc(r.device)+'<small>'+esc(r.name)+' \u00b7 '+esc(r.idcard)+' \u00b7 out '+esc(r.date)+' '+esc(r.outTime)+'</small></span>'+
+        '<span class="tag">Outstanding</span></label>';
+    }
+    wrap.innerHTML = n ? html : '<div class="hint">Nothing is outstanding right now.</div>';
+    updateReturnCount();
+  }
+  function selectedReturnIds(){
+    var out=[], b=document.querySelectorAll('#sDevList .sdev-chk');
+    for(var i=0;i<b.length;i++) if(b[i].checked) out.push(b[i].value);
+    return out;
+  }
+  function updateReturnCount(){
+    var el=$('sCount'); if(!el) return;
+    var n=selectedReturnIds().length;
+    el.textContent = n+' selected';
+  }
+
+
+  $('cId').addEventListener('input',function(){
+    var s=findStaff(this.value); $('cWho').textContent = s? ('✔ '+s[1]+' · '+s[2]) : (this.value?'ID not found in staff roster':'');
+  });
+
+  function startMins(){ var t=(db.startTime||'08:00').split(':'); return (parseInt(t[0],10)||0)*60+(parseInt(t[1],10)||0); }
+  function beforeStart(){ var d=new Date(); return (d.getHours()*60+d.getMinutes()) < startMins(); }
+  function prettyStart(){
+    var t=(db.startTime||'08:00').split(':'), h=parseInt(t[0],10)||0, ap=h<12?'AM':'PM', h12=h%12; if(h12===0) h12=12;
+    return h12+':'+(t[1]||'00')+' '+ap;
+  }
+  function startNotice(){
+    var el=$('cStartNote'); if(!el) return;
+    if(beforeStart()){
+      el.className='msg show err';
+      el.textContent='\u23F0 Sign-out opens at '+prettyStart()+'. It is not yet time to collect a device \u2014 you can browse available devices in the meantime. Returns are accepted at any time.';
+    } else { el.className='msg'; el.textContent=''; }
+  }
+  setInterval(startNotice, 30000);
+
+  $('cBtn').onclick=function(){
+    var m=$('cMsg'), s=findStaff($('cId').value), dev=$('cDev').value;
+    if(beforeStart()){
+      if(!(CURRENT&&CURRENT.admin)) return msg(m,'\u23F0 Not yet time to sign out devices. Collection opens at '+prettyStart()+' (now '+clock()+'). Please come back then \u2014 returns can be done any time.',false);
+      if(!window.confirm('It is before the '+prettyStart()+' sign-out time.\n\nOverride as administrator and record this collection anyway?')) return;
+    }
+    if(!s) return msg(m,'Invalid ID card number. Contact admin.',false);
+    if(!dev) return msg(m,'Please select a device.',false);
+    var mine=outstandingFor(s[0]);
+    if(mine && !window.confirm(s[1]+' already has "'+mine.device+'" signed out (since '+mine.date+' '+mine.outTime+').\n\nCollect '+dev+' as an additional device?')) return;
+    var h=holderOf(dev);
+    if(h){ availability(); return msg(m,'Device unavailable — '+dev+' is still with '+h.name+' ('+h.idcard+') since '+h.date+' '+h.outTime+'. Please pick another device.',false); }
+    var ok=window.confirm('Please confirm:\n\n'+s[1]+' ('+s[0]+')\nis collecting: '+dev+'\n\nClick OK to finalize this collection.');
+    if(!ok) return;
+    var rec={id:'R'+Date.now(),date:today(),device:dev,idcard:s[0],name:s[1],phone:s[2],
+      outTime:clock(),note:$('cNote').value.trim(),inTime:'',submittedBy:'',receivedBy:''};
+    db.records.push(rec); save(); fbSaveRecord(rec); push(Object.assign({action:'collect'},rec));
+    msg(m,'Collection recorded: '+dev+' by '+s[1]+' at '+rec.outTime+'.',true);
+    $('cNote').value='';$('cDev').value='';
+    fillDevices();
+  };
+
+  $('sUnlock').onclick=function(){
+    var m=$('sMsg'), id=norm($('sRec').value), pin=$('sPin').value.trim();
+    if(!id) return msg(m,'Enter the receiving officer ID card number.',false);
+    if(!pin) return msg(m,'Enter the receiving officer PIN.',false);
+    var listed=false;
+    for(var i=0;i<db.receivers.length;i++) if(norm(db.receivers[i])===id) listed=true;
+    if(!listed) return msg(m,'This ID is not authorised to receive devices.',false);
+    if(!fbReady) return msg(m,'Not connected to the cloud — can\'t verify securely right now. Check your internet connection and try again.',false);
+    $('sUnlock').disabled=true;
+    PAPP.auth().signInWithEmailAndPassword(RECEIVER_EMAIL,pin).then(function(){
+      $('sUnlock').disabled=false; $('sPin').value='';
+      var s=findStaff(id);
+      msg(m,'Access granted to '+(s?s[1]:id)+'.',true); $('sPanel').style.display='block'; fillOutstanding();
+    }).catch(function(e){
+      $('sUnlock').disabled=false;
+      msg(m,authErr(e),false);
+    });
+  };
+
+  $('sSub').addEventListener('input',function(){
+    var s=findStaff(this.value);
+    $('sSubWho').textContent = s ? ('\u2714 '+s[1]+' \u00b7 '+s[2]) : (this.value?'ID not found in staff roster':'');
+  });
+  $('sDevList').addEventListener('change',function(e){
+    if(e.target.classList.contains('sdev-chk')){
+      e.target.closest('.devrow').classList.toggle('sel', e.target.checked);
+      updateReturnCount();
+    }
+  });
+  $('sSelMine').onclick=function(){
+    var sub=findStaff($('sSub').value);
+    if(!sub) return msg($('sMsg2'),'Enter a valid submitting staff ID card number first.',false);
+    var b=document.querySelectorAll('#sDevList .sdev-chk'), hit=0;
+    for(var i=0;i<b.length;i++){
+      var rec=recordById(b[i].value);
+      if(rec && norm(rec.idcard)===norm(sub[0])){ b[i].checked=true; b[i].closest('.devrow').classList.add('sel'); hit++; }
+    }
+    updateReturnCount();
+    msg($('sMsg2'), hit ? ('Ticked '+hit+' outstanding device(s) held by '+sub[1]+'.') : ('No outstanding devices found for '+sub[1]+'.'), !!hit);
+  };
+  $('sSelNone').onclick=function(){
+    var b=document.querySelectorAll('#sDevList .sdev-chk');
+    for(var i=0;i<b.length;i++){ b[i].checked=false; b[i].closest('.devrow').classList.remove('sel'); }
+    updateReturnCount();
+  };
+  function recordById(id){ for(var i=0;i<db.records.length;i++) if(db.records[i].id===id) return db.records[i]; return null; }
+
+  $('sBtn').onclick=function(){
+    var m=$('sMsg2'), sub=findStaff($('sSub').value), ids=selectedReturnIds();
+    if(!sub) return msg(m,'Submitting staff ID not recognised.',false);
+    if(!ids.length) return msg(m,'Tick at least one device being returned.',false);
+    if(!$('sChk').checked) return msg(m,'Tick the confirmation that the devices were physically received.',false);
+    var names=[], t=clock(), d=today(), rid=norm($('sRec').value);
+    for(var i=0;i<ids.length;i++){
+      var r=recordById(ids[i]); if(!r||r.inTime) continue;
+      r.inTime=t; r.returnDate=d; r.submittedBy=sub[0]+' - '+sub[1]; r.receivedBy=rid;
+      fbSaveRecord(r); push(Object.assign({action:'return'},r));
+      names.push(r.device);
+    }
+    if(!names.length) return msg(m,'Those devices were already returned.',false);
+    save();
+    msg(m,names.length+' device(s) returned by '+sub[1]+' at '+t+': '+names.join(', ')+'.',true);
+    $('sSub').value=''; $('sSubWho').textContent=''; $('sChk').checked=false;
+    fillOutstanding(); fillDevices(); renderLog();
+  };
+
+  function rowsFor(date){var a=[];for(var i=0;i<db.records.length;i++) if(db.records[i].date===date) a.push(db.records[i]);return a}
+  function renderLog(){
+    var d=$('lDate').value||today(); $('lDate').value=d;
+    var f=$('lFilter').value, rows=rowsFor(d), tb=$('lTable').querySelector('tbody'), out=0,i;
+    $('lTable').classList.toggle('hideid', !(CURRENT&&CURRENT.admin));
+    tb.innerHTML='';
+    var uniqueDevices={};
+    for(i=0;i<rows.length;i++){ var r=rows[i]; if(!r.inTime) out++;
+      uniqueDevices[r.device]=true;
+      if(f==='out'&&r.inTime) continue; if(f==='in'&&!r.inTime) continue;
+      var tr=document.createElement('tr');
+      var isAdmin=!!(CURRENT&&CURRENT.admin);
+      var subTxt=r.submittedBy||'—', recTxt=r.receivedBy||'—';
+      if(!isAdmin){
+        if(r.submittedBy){ var p=String(r.submittedBy).split(' - '); subTxt=p.length>1?p.slice(1).join(' - '):hideId(p[0]); }
+        if(r.receivedBy){ var rs=findStaff(r.receivedBy); recTxt=rs?rs[1]:hideId(r.receivedBy); }
+      }
+      tr.innerHTML='<td>'+r.device+'</td><td>'+r.name+'</td><td class="idcol">'+r.idcard+'</td><td>'+r.phone+'</td><td>'+r.outTime+'</td><td>'+(r.inTime||'—')+'</td><td>'+subTxt+'</td><td>'+recTxt+'</td><td><span class="pill '+(r.inTime?'in':'out')+'">'+(r.inTime?'Returned':'Outstanding')+'</span></td><td>'+(r.note||'—')+'</td><td class="admincol"><button class="del-btn" data-id="'+r.id+'">Delete</button></td>';
+
+      tb.appendChild(tr);
+    }
+    if(!tb.children.length) tb.innerHTML='<tr><td colspan="11">No records for this date.</td></tr>';
+    var uniqueCount=Object.keys(uniqueDevices).length;
+    $('lStats').innerHTML='<div class="stat"><b>'+uniqueCount+'</b><span>Signed out</span></div>'+
+      '<div class="stat"><b>'+(rows.length-out)+'</b><span>Returned</span></div>'+
+      '<div class="stat"><b>'+out+'</b><span>Outstanding</span></div>';
+  }
+  $('lDate').onchange=renderLog; $('lFilter').onchange=renderLog;
+
+  function deleteRecord(id){
+    if(!(CURRENT&&CURRENT.admin)) return;
+    if(!fbReady) return alert('Not connected to the cloud — records can\'t be deleted right now.');
+    var rec=null; for(var i=0;i<db.records.length;i++) if(db.records[i].id===id) rec=db.records[i];
+    var label=rec ? (rec.device+' — '+rec.name+' ('+rec.date+' '+rec.outTime+')') : 'this record';
+    var pin=window.prompt('Permanently delete '+label+'?\n\nThis cannot be undone. Enter the admin PIN to confirm:');
+    if(pin===null) return;
+    pin=pin.trim();
+    if(!pin) return;
+    PAPP.auth().signInWithEmailAndPassword(ADMIN_EMAIL,pin).then(function(){
+      return FS.collection('records').doc(id).delete();
+    }).then(function(){
+      db.records=db.records.filter(function(r){return r.id!==id});
+      save(); fillDevices(); fillOutstanding(); renderLog(); gateStats(); renderAdminTable();
+    }).catch(function(e){
+      alert('Delete cancelled — '+authErr(e));
+    });
+  }
+  $('lTable').querySelector('tbody').addEventListener('click',function(e){
+    if(e.target.classList.contains('del-btn')) deleteRecord(e.target.getAttribute('data-id'));
+  });
+
+  function csv(rows,name){
+    var h=['Date','Device','Staff name','ID card','Phone','Time out','Time in','Submitted by','Received by','Purpose','Status'],l=[h.join(',')];
+    for(var i=0;i<rows.length;i++){var r=rows[i];
+      l.push([r.date,r.device,r.name,r.idcard,r.phone,r.outTime,r.inTime||'',r.submittedBy||'',r.receivedBy||'',(r.note||'').replace(/,/g,';'),r.inTime?'Returned':'Outstanding']
+        .map(function(v){return '"'+String(v).replace(/"/g,'""')+'"'}).join(','));}
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([l.join('\n')],{type:'text/csv'})); a.download=name; a.click();
+  }
+  $('lCsv').onclick=function(){var d=$('lDate').value||today();csv(rowsFor(d),'device-log-'+d+'.csv')};
+
+  function renderAdminTable(){
+    var t=$('aTable'); if(!t) return; var tb=t.querySelector('tbody'); tb.innerHTML='';
+    for(var i=db.records.length-1;i>=0;i--){var r=db.records[i];var tr=document.createElement('tr');
+      tr.innerHTML='<td>'+r.date+'</td><td>'+r.device+'</td><td>'+r.name+' ('+r.idcard+')</td><td>'+r.outTime+'</td><td>'+(r.inTime||'—')+'</td><td>'+(r.submittedBy||'—')+'</td><td>'+(r.receivedBy||'—')+'</td>';
+      tb.appendChild(tr);}
+    if(!tb.children.length) tb.innerHTML='<tr><td colspan="7">No records yet.</td></tr>';
+  }
+  function fillAdminFields(){
+    $('aStaff').value=db.staff.map(function(s){return s.join(', ')}).join('\n');
+    $('aDevs').value=db.devices.join('\n');
+    $('aRec').value=db.receivers.join(', ');
+    $('aStart').value=db.startTime||'08:00';
+    $('aApin').value=''; $('aApin').placeholder='Leave blank to keep current PIN (min 6 chars)';
+    $('aRpin').value=''; $('aRpin').disabled=true;
+    $('aRpin').placeholder='Change in Firebase Console → Authentication → receiver@device-portal.local';
+    $('aUrl').value=db.url||''; $('aFb').value=db.fb||'';
+  }
+  $('aBtn').onclick=function(){
+    var pin=$('aPin').value.trim();
+    if(!pin) return msg($('aMsg'),'Enter the admin PIN.',false);
+    if(!fbReady) return msg($('aMsg'),'Not connected to the cloud — can\'t verify securely right now. Check your internet connection and try again.',false);
+    $('aBtn').disabled=true;
+    PAPP.auth().signInWithEmailAndPassword(ADMIN_EMAIL,pin).then(function(){
+      $('aBtn').disabled=false;
+      $('aMsg').className='msg'; $('aPanel').style.display='block';
+      fillAdminFields(); renderAdminTable();
+    }).catch(function(e){
+      $('aBtn').disabled=false;
+      msg($('aMsg'),authErr(e),false);
+    });
+  };
+  $('aSave').onclick=function(){
+    db.staff=$('aStaff').value.split('\n').map(function(l){return l.split(',').map(function(x){return x.trim()})}).filter(function(a){return a[0]});
+    db.devices=$('aDevs').value.split('\n').map(function(l){return l.trim()}).filter(Boolean);
+    db.receivers=$('aRec').value.split(',').map(function(x){return x.trim()}).filter(Boolean);
+    var st=($('aStart').value||'').trim();
+    db.startTime=/^\d{2}:\d{2}$/.test(st)?st:'08:00';
+    save(); startNotice();
+    var newApin=$('aApin').value.trim();
+    fbSaveSettings();
+    var tasks=[];
+    if(newApin){
+      if(newApin.length<6) tasks.push(Promise.reject({message:'Admin PIN must be at least 6 characters (Firebase requirement).'}));
+      else tasks.push(PAPP.auth().currentUser.updatePassword(newApin));
+    }
+    Promise.all(tasks).then(function(){
+      fillDevices(); fillOutstanding(); gateStats(); fillAdminFields();
+      msg($('aMsg'),'Settings saved and synced to the cloud.'+(newApin?' Admin PIN updated.':''),true);
+    }).catch(function(e){
+      fillDevices(); fillOutstanding(); gateStats();
+      msg($('aMsg'),'Roster/devices saved, but PIN update failed: '+(e.message||e),false);
+    });
+  };
+  $('aStaffFile').onchange=function(){ var inp=this; readFile(inp,function(rows){
+    var add=rows.map(function(c){return [c[0]||'',c[1]||'',c[2]||'']}).filter(function(a){return a[0]});
+    var cur=$('aStaffAppend').checked ? db.staff.slice() : [];
+    for(var i=0;i<add.length;i++){ var dup=false;
+      for(var j=0;j<cur.length;j++) if(norm(cur[j][0])===norm(add[i][0])){ cur[j]=add[i]; dup=true; }
+      if(!dup) cur.push(add[i]); }
+    db.staff=cur; save(); fbSaveSettings(); fillAdminFields(); gateStats();
+    msg($('aMsg'),'Imported '+add.length+' staff rows. Roster now has '+db.staff.length+' staff.',true);
+  }); };
+  $('aDevFile').onchange=function(){ var inp=this; readFile(inp,function(rows){
+    var add=rows.map(function(c){return (c[0]||'').trim()}).filter(Boolean);
+    var cur=$('aDevAppend').checked ? db.devices.slice() : [];
+    for(var i=0;i<add.length;i++) if(cur.indexOf(add[i])<0) cur.push(add[i]);
+    db.devices=cur; save(); fbSaveSettings(); fillAdminFields(); fillDevices(); gateStats();
+    msg($('aMsg'),'Imported '+add.length+' devices. Register now has '+db.devices.length+' devices.',true);
+  }); };
+  $('aFbSave').onclick=function(){ db.fb=$('aFb').value.trim(); save(); fbConnect(false); };
+  $('aFbPush').onclick=function(){ fbPushAll(); };
+  $('aFbOff').onclick=function(){ db.fb=''; save(); fbReady=false; FS=null; fbStat('Disconnected — data is saved in this browser only. Reload the page to fully detach.'); };
+  $('aUrlSave').onclick=function(){db.url=$('aUrl').value.trim();save();msg($('aMsg'),'Sheet endpoint saved.',true)};
+  $('aCsv').onclick=function(){csv(db.records,'device-database.csv')};
+  $('aWipe').onclick=function(){if(confirm('Delete ALL records?')){
+    if(fbReady&&FS){ for(var i=0;i<db.records.length;i++) FS.collection('records').doc(db.records[i].id).delete(); }
+    db.records=[];save();msg($('aMsg'),'All records cleared.',true);fillDevices();fillOutstanding();renderAdminTable();}};
+
+
+  /* ---------- Login gate ---------- */
+  var SK='smdcp_session';
+  function updateIdentityUI(){
+    var loggedInStaff = CURRENT && !CURRENT.admin;
+    if(loggedInStaff){
+      $('cIdWrap').style.display='none';
+      $('cId').value=CURRENT.idcard;
+      $('cSelfInfo').className='selfinfo show';
+      $('cSelfInfo').textContent='Signing out as '+CURRENT.name+' · '+CURRENT.idcard;
+      $('sRecWrap').style.display='none';
+      $('sRec').value=CURRENT.idcard;
+      $('sRecSelfInfo').className='selfinfo show';
+      $('sRecSelfInfo').textContent='Receiving officer: '+CURRENT.name+' · '+CURRENT.idcard;
+    } else {
+      $('cIdWrap').style.display='';
+      $('cSelfInfo').className='selfinfo';
+      $('sRecWrap').style.display='';
+      $('sRecSelfInfo').className='selfinfo';
+      if(!CURRENT){ $('cId').value=''; $('sRec').value=''; }
+    }
+    $('lCsv').style.display = (CURRENT && CURRENT.admin) ? '' : 'none';
+  }
+  function enter(session){
+    try{ sessionStorage.setItem(SK,JSON.stringify(session)); }catch(e){}
+    document.body.className='unlocked';
+    CURRENT=session;
+    $('hWho').innerHTML = session.admin
+      ? 'Signed in as <b>Administrator</b>'
+      : 'Signed in as <b>'+session.name+'</b> · '+session.idcard;
+    document.querySelector('nav button[data-tab="admin"]').style.display = session.admin?'':'none';
+    if(!session.admin){ $('cWho').textContent='✔ '+session.name+' · '+session.phone; }
+    updateIdentityUI();
+    fillDevices(); renderLog(); fillOutstanding(); startNotice();
+  }
+  function gateStats(){
+    var free=0,out=0;
+    for(var i=0;i<db.devices.length;i++){ if(holderOf(db.devices[i])) out++; else free++; }
+    var mine=0, id=norm($('gId').value);
+    for(var j=0;j<db.records.length;j++){ var r=db.records[j]; if(!r.inTime&&norm(r.idcard)===id) mine++; }
+    $('gStats').innerHTML='<div><b>'+free+'</b><small>Available</small></div>'+
+      '<div><b>'+out+'</b><small>Signed out</small></div>'+
+      '<div><b>'+mine+'</b><small>With you</small></div>';
+  }
+  function greet(){var h=new Date().getHours();return h<12?'Good morning':h<17?'Good afternoon':'Good evening'}
+  function gateLookup(){
+    var v=$('gId').value.trim(), s=findStaff(v), c=$('gCard');
+    if(s){
+      c.className='idcard show';
+      $('gAv').textContent=(s[1]||'').split(' ').map(function(w){return w[0]}).slice(0,2).join('').toUpperCase();
+      $('gName').textContent=s[1]; $('gMeta').textContent=s[0]+' · '+s[2];
+      $('gGreet').textContent=greet()+', '+String(s[1]).split(' ')[0]+'. Ready to sign out a device?';
+      $('gBtn').disabled=false; $('gBtn').textContent='CONTINUE AS '+String(s[1]).split(' ')[0].toUpperCase();
+      $('gMsg').className='msg';
+    } else {
+      c.className='idcard';
+      $('gGreet').textContent='Enter your Staff ID card number to sign out or return a device.';
+      $('gBtn').disabled=true; $('gBtn').textContent='CONTINUE';
+      if(v) msg($('gMsg'),'No staff record matches that ID card number yet.',false); else $('gMsg').className='msg';
+    }
+    gateStats();
+  }
+  $('gId').addEventListener('input',gateLookup);
+  $('gBtn').onclick=function(){
+    var s=findStaff($('gId').value);
+    if(!s) return msg($('gMsg'),'Staff ID not found. Please check your ID card number or contact the administrator.',false);
+    enter({admin:false,idcard:s[0],name:s[1],phone:s[2]});
+  };
+  $('gId').addEventListener('keydown',function(e){ if(e.key==='Enter'&&!$('gBtn').disabled) $('gBtn').click(); });
+
+  $('gAdminToggle').onclick=function(){ var b=$('gAdminBox'); b.style.display = b.style.display==='none'?'block':'none'; };
+  $('gAdminBtn').onclick=function(){
+    var pin=$('gPin').value.trim();
+    if(!pin) return msg($('gMsg'),'Enter the admin PIN.',false);
+    if(!fbReady) return msg($('gMsg'),'Not connected to the cloud — can\'t verify securely right now. Check your internet connection and try again.',false);
+    $('gAdminBtn').disabled=true;
+    PAPP.auth().signInWithEmailAndPassword(ADMIN_EMAIL,pin).then(function(){
+      $('gAdminBtn').disabled=false; $('gPin').value='';
+      enter({admin:true});
+    }).catch(function(e){
+      $('gAdminBtn').disabled=false;
+      msg($('gMsg'),authErr(e),false);
+    });
+  };
+  $('gPin').addEventListener('keydown',function(e){ if(e.key==='Enter') $('gAdminBtn').click(); });
+  $('signOut').onclick=function(){
+    try{ sessionStorage.removeItem(SK); }catch(e){}
+    document.body.className='locked'; $('gId').value=''; $('gPin').value='';
+    $('gMsg').className='msg'; $('aPanel').style.display='none'; $('aPin').value='';
+    $('sPanel').style.display='none';
+    CURRENT=null; updateIdentityUI();
+  };
+
+  $('lDate').value=today(); fillDevices(); renderLog(); gateStats();
+  if(db.fb) fbConnect(true);
+  try{ var sess=JSON.parse(sessionStorage.getItem(SK)); if(sess) enter(sess); }catch(e){}
+
+})();
+</script>
+</body>
+</html>

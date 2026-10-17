@@ -1,0 +1,23 @@
+{
+  "target": { "serviceAccount": "./keys/spugis.json" },
+
+  "field": {
+    "serviceAccount": "./keys/dt-field-manager.json",
+    "hash": {
+      "algorithm": "SCRYPT",
+      "key": "PASTE base64_signer_key FROM dt-field-manager",
+      "saltSeparator": "PASTE base64_salt_separator",
+      "rounds": 8,
+      "memoryCost": 14
+    }
+  },
+
+  "devices": {
+    "serviceAccount": "./keys/device-collection-database.json",
+    "importPinAccounts": false
+  },
+
+  "weekly": {
+    "serviceAccount": "./keys/feeder-dashboard-project.json"
+  }
+}

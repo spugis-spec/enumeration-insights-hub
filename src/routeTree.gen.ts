@@ -11,9 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
-import { Route as FieldManagerRouteImport } from './routes/field-manager'
+import { Route as DevicesRouteImport } from './routes/devices'
+import { Route as FieldRouteImport } from './routes/field'
+import { Route as FieldSignInRouteImport } from './routes/field-sign-in'
 import { Route as MapRouteImport } from './routes/map'
-import { Route as MobileDevicesRouteImport } from './routes/mobile-devices'
 import { Route as ProjectionsRouteImport } from './routes/projections'
 import { Route as WeeklyReportRouteImport } from './routes/weekly-report'
 
@@ -27,19 +28,24 @@ const AnalyticsRoute = AnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
-const FieldManagerRoute = FieldManagerRouteImport.update({
-  id: '/field-manager',
-  path: '/field-manager',
+const DevicesRoute = DevicesRouteImport.update({
+  id: '/devices',
+  path: '/devices',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FieldRoute = FieldRouteImport.update({
+  id: '/field',
+  path: '/field',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FieldSignInRoute = FieldSignInRouteImport.update({
+  id: '/field-sign-in',
+  path: '/field-sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MapRoute = MapRouteImport.update({
   id: '/map',
   path: '/map',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MobileDevicesRoute = MobileDevicesRouteImport.update({
-  id: '/mobile-devices',
-  path: '/mobile-devices',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectionsRoute = ProjectionsRouteImport.update({
@@ -56,18 +62,20 @@ const WeeklyReportRoute = WeeklyReportRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
-  '/field-manager': typeof FieldManagerRoute
+  '/devices': typeof DevicesRoute
+  '/field': typeof FieldRoute
+  '/field-sign-in': typeof FieldSignInRoute
   '/map': typeof MapRoute
-  '/mobile-devices': typeof MobileDevicesRoute
   '/projections': typeof ProjectionsRoute
   '/weekly-report': typeof WeeklyReportRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
-  '/field-manager': typeof FieldManagerRoute
+  '/devices': typeof DevicesRoute
+  '/field': typeof FieldRoute
+  '/field-sign-in': typeof FieldSignInRoute
   '/map': typeof MapRoute
-  '/mobile-devices': typeof MobileDevicesRoute
   '/projections': typeof ProjectionsRoute
   '/weekly-report': typeof WeeklyReportRoute
 }
@@ -75,9 +83,10 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
-  '/field-manager': typeof FieldManagerRoute
+  '/devices': typeof DevicesRoute
+  '/field': typeof FieldRoute
+  '/field-sign-in': typeof FieldSignInRoute
   '/map': typeof MapRoute
-  '/mobile-devices': typeof MobileDevicesRoute
   '/projections': typeof ProjectionsRoute
   '/weekly-report': typeof WeeklyReportRoute
 }
@@ -86,27 +95,30 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/analytics'
-    | '/field-manager'
+    | '/devices'
+    | '/field'
+    | '/field-sign-in'
     | '/map'
-    | '/mobile-devices'
     | '/projections'
     | '/weekly-report'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/analytics'
-    | '/field-manager'
+    | '/devices'
+    | '/field'
+    | '/field-sign-in'
     | '/map'
-    | '/mobile-devices'
     | '/projections'
     | '/weekly-report'
   id:
     | '__root__'
     | '/'
     | '/analytics'
-    | '/field-manager'
+    | '/devices'
+    | '/field'
+    | '/field-sign-in'
     | '/map'
-    | '/mobile-devices'
     | '/projections'
     | '/weekly-report'
   fileRoutesById: FileRoutesById
@@ -114,9 +126,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
-  FieldManagerRoute: typeof FieldManagerRoute
+  DevicesRoute: typeof DevicesRoute
+  FieldRoute: typeof FieldRoute
+  FieldSignInRoute: typeof FieldSignInRoute
   MapRoute: typeof MapRoute
-  MobileDevicesRoute: typeof MobileDevicesRoute
   ProjectionsRoute: typeof ProjectionsRoute
   WeeklyReportRoute: typeof WeeklyReportRoute
 }
@@ -137,11 +150,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/field-manager': {
-      id: '/field-manager'
-      path: '/field-manager'
-      fullPath: '/field-manager'
-      preLoaderRoute: typeof FieldManagerRouteImport
+    '/devices': {
+      id: '/devices'
+      path: '/devices'
+      fullPath: '/devices'
+      preLoaderRoute: typeof DevicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/field': {
+      id: '/field'
+      path: '/field'
+      fullPath: '/field'
+      preLoaderRoute: typeof FieldRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/field-sign-in': {
+      id: '/field-sign-in'
+      path: '/field-sign-in'
+      fullPath: '/field-sign-in'
+      preLoaderRoute: typeof FieldSignInRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/map': {
@@ -149,13 +176,6 @@ declare module '@tanstack/react-router' {
       path: '/map'
       fullPath: '/map'
       preLoaderRoute: typeof MapRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/mobile-devices': {
-      id: '/mobile-devices'
-      path: '/mobile-devices'
-      fullPath: '/mobile-devices'
-      preLoaderRoute: typeof MobileDevicesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projections': {
@@ -178,9 +198,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
-  FieldManagerRoute: FieldManagerRoute,
+  DevicesRoute: DevicesRoute,
+  FieldRoute: FieldRoute,
+  FieldSignInRoute: FieldSignInRoute,
   MapRoute: MapRoute,
-  MobileDevicesRoute: MobileDevicesRoute,
   ProjectionsRoute: ProjectionsRoute,
   WeeklyReportRoute: WeeklyReportRoute,
 }

@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { getFirebaseAuth } from "./firebase";
 
@@ -14,14 +15,20 @@ const AuthCtx = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
+  const qc = useQueryClient();
+  const lastUid = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     const auth = getFirebaseAuth();
     return onAuthStateChanged(auth, (u) => {
+      // Field Manager / Weekly Report data is cached per session: drop it when the person changes.
+      const uid = u?.uid ?? null;
+      if (lastUid.current !== undefined && lastUid.current !== uid) qc.clear();
+      lastUid.current = uid;
       setUser(u);
       setReady(true);
     });
-  }, []);
+  }, [qc]);
 
   const value: AuthState = {
     user,

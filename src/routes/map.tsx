@@ -3,6 +3,8 @@ import { ClientOnly } from "@tanstack/react-router";
 import { lazy, Suspense, useMemo, useRef, useState, useEffect } from "react";
 import { ref, get } from "firebase/database";
 import { getDb } from "@/lib/firebase";
+import { listSpoolDates, loadSpool } from "@/lib/gisSpool";
+import { SHARED_KEYS } from "@/lib/shared";
 import { rowsToPoints, ASSET_LABELS, type AssetType, type GisPoint } from "@/lib/gis";
 
 const GisMap = lazy(() => import("@/components/GisMap"));
@@ -14,8 +16,6 @@ export const Route = createFileRoute("/map")({
       { name: "description", content: "Interactive map of enumerated DSS, HT, LT and customer meter locations by feeder, enumerator and date." },
       { property: "og:title", content: "GIS Map — AEDC Enumeration" },
       { property: "og:description", content: "Plot and inspect enumerated assets and feeder coverage on an interactive map." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: MapPage,
@@ -35,6 +35,31 @@ function MapPage() {
   const [boundaries, setBoundaries] = useState(true);
   const [names, setNames] = useState<Record<string, string>>({});
   const worker = useRef<Worker | null>(null);
+  const [spoolDates, setSpoolDates] = useState<{ date: string; count: number; where: string }[]>([]);
+  const [spoolDate, setSpoolDate] = useState("");
+  const [spooling, setSpooling] = useState(false);
+
+  const spool = async (date: string) => {
+    if (!date) return;
+    setSpooling(true);
+    const pts = await loadSpool(date);
+    setSpooling(false);
+    if (!pts) return setMsg(`No saved map points for ${date}. Generate (and save) that dashboard first.`);
+    setPoints(pts);
+    const n = pts.dss.length + pts.ht.length + pts.lt.length + pts.cust.length;
+    setMsg(`Spooled ${n.toLocaleString()} points from the ${date} dashboard`);
+  };
+
+  useEffect(() => {
+    listSpoolDates().then((d) => {
+      setSpoolDates(d);
+      const current = window.localStorage.getItem(SHARED_KEYS.currentDashboardDate) || "";
+      const pick = d.find((x) => x.date === current)?.date ?? d[0]?.date ?? "";
+      setSpoolDate(pick);
+      if (pick) void spool(pick);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     // Username → full name from the shared roster mappings.
@@ -98,8 +123,22 @@ function MapPage() {
   return (
     <div className="grid h-[calc(100vh-3.5rem)] grid-cols-1 lg:grid-cols-[320px_1fr]">
       <aside className="space-y-5 overflow-y-auto border-r bg-card p-4">
+        <section className="space-y-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">From dashboard</h2>
+          <div className="flex gap-2">
+            <select className={sel} value={spoolDate} onChange={(e) => { setSpoolDate(e.target.value); void spool(e.target.value); }}>
+              {!spoolDates.length && <option value="">No dashboard points yet</option>}
+              {spoolDates.map((d) => (
+                <option key={d.date} value={d.date}>{d.date.replace("_to_", " → ")}{d.count ? ` · ${d.count.toLocaleString()} pts` : ""}{d.where === "device" ? " (this device)" : ""}</option>
+              ))}
+            </select>
+            <button className="rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-60" disabled={!spoolDate || spooling} onClick={() => spool(spoolDate)}>{spooling ? "…" : "Load"}</button>
+          </div>
+          <p className="text-xs text-muted-foreground">Points are saved automatically when a dashboard is generated, and shared with everyone once it's saved to the cloud.</p>
+        </section>
+
         <section>
-          <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Asset files</h2>
+          <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Or upload asset files</h2>
           <div className="space-y-2">
             {TYPES.map((t) => (
               <label key={t} className="flex cursor-pointer items-center justify-between rounded-md border border-dashed px-3 py-2 text-sm hover:bg-accent">
@@ -161,7 +200,7 @@ function MapPage() {
         </ClientOnly>
         {!all.length && (
           <div className="pointer-events-none absolute inset-0 z-[500] grid place-items-center">
-            <div className="rounded-lg bg-card/95 px-5 py-3 text-sm shadow">Upload DSS, HT, LT or Customer files with latitude/longitude columns to plot them.</div>
+            <div className="rounded-lg bg-card/95 px-5 py-3 text-sm shadow">Pick a dashboard date above, or upload DSS, HT, LT or Customer files with latitude/longitude columns.</div>
           </div>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, browserLocalPersistence, setPersistence, type Auth } from "firebase/auth";
 import { getDatabase, type Database } from "firebase/database";
+import { getFirestore, type Firestore } from "firebase/firestore";
 
 // Existing AEDC GIS Firebase project (public web config — safe in client code).
 export const firebaseConfig = {
@@ -30,4 +31,9 @@ export function getFirebaseAuth() {
 }
 export function getDb(): Database {
   return getDatabase(getFirebaseApp());
+}
+
+/** Firestore on the same `spugis` project (Field Manager, Weekly Report, Mobile Devices data). */
+export function getFs(): Firestore {
+  return getFirestore(getFirebaseApp());
 }
