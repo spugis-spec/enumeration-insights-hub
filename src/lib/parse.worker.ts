@@ -5,7 +5,10 @@ import * as XLSX from "xlsx";
 self.onmessage = (e: MessageEvent<{ id: string; buffer: ArrayBuffer }>) => {
   try {
     const wb = XLSX.read(e.data.buffer, { type: "array", cellDates: true });
-    const ws = wb.Sheets[wb.SheetNames[0]];
+    const sheetName = wb.SheetNames[0];
+    if (!sheetName) throw new Error("The workbook has no worksheets");
+    const ws = wb.Sheets[sheetName];
+    if (!ws) throw new Error("The first worksheet could not be read");
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
     self.postMessage({ id: e.data.id, rows });
   } catch (err) {

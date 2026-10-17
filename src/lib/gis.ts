@@ -37,8 +37,9 @@ function toDateKey(v: unknown): string {
 }
 
 export function rowsToPoints(rows: Record<string, unknown>[], type: AssetType): GisPoint[] {
-  if (!rows.length) return [];
-  const keys = Object.keys(rows[0]);
+  const firstRow = rows[0];
+  if (!firstRow) return [];
+  const keys = Object.keys(firstRow);
   const latK = find(keys, [/^lat(itude)?$/i, /latitude/i, /^y$/i, /^_?y$/i, /gps.*lat/i, /lat/i]);
   const lngK = find(keys, [/^(lng|lon|long|longitude)$/i, /longitude/i, /^x$/i, /^_?x$/i, /gps.*lon/i, /lon/i]);
   const userK = find(keys, [/^username$/i, /creator/i, /created_?user/i, /enumerator/i, /user/i, /editor/i]);
@@ -70,18 +71,24 @@ export function rowsToPoints(rows: Record<string, unknown>[], type: AssetType): 
 export function convexHull(pts: [number, number][]): [number, number][] {
   if (pts.length < 3) return pts;
   const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const cross = (o: number[], a: number[], b: number[]) =>
+  const cross = (o: [number, number], a: [number, number], b: [number, number]) =>
     (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const append = (chain: [number, number][], q: [number, number]) => {
+    while (chain.length >= 2) {
+      const a = chain[chain.length - 2];
+      const b = chain[chain.length - 1];
+      if (!a || !b || cross(a, b, q) > 0) break;
+      chain.pop();
+    }
+    chain.push(q);
+  };
   const lower: [number, number][] = [];
   for (const q of p) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
-    lower.push(q);
+    append(lower, q);
   }
   const upper: [number, number][] = [];
-  for (let i = p.length - 1; i >= 0; i--) {
-    const q = p[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
-    upper.push(q);
+  for (const q of [...p].reverse()) {
+    append(upper, q);
   }
   return lower.slice(0, -1).concat(upper.slice(0, -1));
 }

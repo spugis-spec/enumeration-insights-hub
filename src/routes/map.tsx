@@ -14,6 +14,8 @@ export const Route = createFileRoute("/map")({
       { name: "description", content: "Interactive map of enumerated DSS, HT, LT and customer meter locations by feeder, enumerator and date." },
       { property: "og:title", content: "GIS Map — AEDC Enumeration" },
       { property: "og:description", content: "Plot and inspect enumerated assets and feeder coverage on an interactive map." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: MapPage,
