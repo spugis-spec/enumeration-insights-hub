@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { CloudTools } from "@/components/CloudTools";
 
 export function AppHeader() {
   const { user, ready, login, logout } = useAuth();
@@ -29,7 +30,9 @@ export function AppHeader() {
           <Link to="/weekly-report" className={linkCls} activeProps={active}>Weekly Report</Link>
           <Link to="/devices" className={linkCls} activeProps={active}>Mobile Devices</Link>
         </nav>
-        <div className="relative ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <CloudTools />
+        <div className="relative">
           {!ready ? (
             <span className="text-xs text-muted-foreground">Checking session…</span>
           ) : user ? (
@@ -64,6 +67,7 @@ export function AppHeader() {
               <button disabled={busy} className="w-full rounded-md bg-primary py-2 text-sm font-medium text-primary-foreground disabled:opacity-60">{busy ? "Signing in…" : "Sign in"}</button>
             </form>
           )}
+        </div>
         </div>
       </div>
     </header>

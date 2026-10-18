@@ -12,11 +12,6 @@
     }
   },
 
-  "devices": {
-    "serviceAccount": "./keys/device-collection-database.json",
-    "importPinAccounts": false
-  },
-
   "weekly": {
     "serviceAccount": "./keys/feeder-dashboard-project.json"
   }
