@@ -1,85 +1,96 @@
 rules_version = '2';
-
-// Unified rules for the single `spugis` project.
-// Covers: Field Manager, Weekly Report, Mobile Devices portal.
-// (Realtime Database rules for the Dashboard / GIS Map are separate: see database.rules.notes.md)
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ---------- who is who ----------
+    // ---------- Helpers (existing app) ----------
     function signedIn() { return request.auth != null; }
-    function isAnonymous() { return request.auth.token.firebase.sign_in_provider == 'anonymous'; }
+    function role() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role; }
+    function isOwnerUid() { return signedIn() && request.auth.uid == 'DYF3J9cWSQgSeGQu925tcef8mdU2'; }
+    function isAdminOrEditor() { return signedIn() && role() in ['admin', 'editor']; }
+    function isHubAdmin() { return isOwnerUid() || (signedIn() && role() == 'admin'); }
+    function isHubStaff() { return isHubAdmin() || (signedIn() && role() in ['editor', 'supervisor']); }
+    function isOwner(userId) { return signedIn() && request.auth.uid == userId; }
 
-    // The two shared PIN accounts that belong to the Mobile Devices portal only.
-    function isPortalAccount() {
-      return signedIn() && !isAnonymous() &&
-        (request.auth.token.email == 'admin@device-portal.local' ||
-         request.auth.token.email == 'receiver@device-portal.local');
-    }
-    function isPortalAdmin() {
-      return signedIn() && !isAnonymous() && request.auth.token.email == 'admin@device-portal.local';
-    }
-    // A real person signed in through the hub's top bar.
-    function isStaffAccount() { return signedIn() && !isAnonymous() && !isPortalAccount(); }
+    // ---------- Helpers (enumeration app) ----------
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function hasProfile() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function isAdmin() { return hasProfile() && me().role == 'admin'; }
+    function isStaff() { return hasProfile() && me().role in ['admin', 'supervisor']; }
 
-    // Field Manager roles live in users/{uid}.role
-    function roleDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
-    function hasFieldRole() {
-      return isStaffAccount() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (roleDoc().data.role == 'admin' || roleDoc().data.role == 'supervisor');
-    }
-    function isFieldAdmin() {
-      return isStaffAccount() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        roleDoc().data.role == 'admin';
+    // ---------- Shared: users ----------
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+
+      allow create: if
+        // existing app: self-signup as viewer
+        (isOwner(userId)
+          && request.resource.data.keys().hasAll(['uid', 'email', 'role'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.role == 'viewer')
+        // enumeration app: admin creates profiles
+        || isAdmin()
+        // enumeration app: first-admin bootstrap
+        || (signedIn() && request.auth.uid == userId && request.resource.data.role == 'admin'
+          && !exists(/databases/$(database)/documents/meta/setup)
+          && getAfter(/databases/$(database)/documents/meta/setup).data.adminUid == request.auth.uid);
+
+      allow update, delete: if isHubAdmin() || isAdmin();
     }
 
-    // ---------- Field Manager ----------
-    // meta/setup exists once the first admin has been claimed. Readable before sign-in.
+    // ---------- Existing app ----------
+    match /schedules/{dateId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && (isAdminOrEditor() || isOwnerUid());
+      allow delete: if isAdminOrEditor();
+    }
+
+    match /config/{docId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && (isAdminOrEditor() || isOwnerUid());
+      allow delete: if isAdminOrEditor();
+    }
+
+    match /hub/{docId} {
+      allow read: if isHubStaff();
+      allow write: if isHubAdmin()
+        || (isHubStaff() && docId in ['alloc', 'vehicles', 'notes']);
+    }
+
+    // ---------- Enumeration app ----------
     match /meta/setup {
-      allow read: if true;
-      allow create: if isStaffAccount() && request.resource.data.adminUid == request.auth.uid;
+      allow get: if true;
+      allow create: if signedIn() && !exists(/databases/$(database)/documents/meta/setup)
+        && request.resource.data.adminUid == request.auth.uid;
       allow update, delete: if false;
     }
 
-    match /users/{uid} {
-      allow read: if isStaffAccount() && (request.auth.uid == uid || isFieldAdmin());
-      // the first admin claims themselves while meta/setup does not exist yet
-      allow create: if isFieldAdmin() ||
-        (isStaffAccount() && request.auth.uid == uid && request.resource.data.role == 'admin' &&
-         !exists(/databases/$(database)/documents/meta/setup));
-      allow update, delete: if isFieldAdmin();
+    match /feeders/{id} { allow read: if isStaff(); allow write: if isAdmin(); }
+    match /enumerators/{id} { allow read: if isStaff(); allow write: if isAdmin(); }
+    match /submissions/{id} { allow read: if isStaff(); allow write: if isAdmin(); }
+    match /capture_issues/{id} { allow read, delete: if isStaff(); allow create, update: if isAdmin(); }
+    match /vehicles/{id} { allow read: if isStaff(); allow write: if isAdmin(); }
+
+    match /dts/{id} {
+      allow read: if isStaff();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (isStaff() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'status_note', 'updated_at', 'updated_by']));
     }
 
-    // Field data: anyone with a Field Manager role can read and work with it.
-    match /feeders/{id}         { allow read, write: if hasFieldRole(); }
-    match /dts/{id}             { allow read, write: if hasFieldRole(); }
-    match /enumerators/{id}     { allow read, write: if hasFieldRole(); }
-    match /allocations/{id}     { allow read, write: if hasFieldRole(); }
-    match /submissions/{id}     { allow read, write: if hasFieldRole(); }
-    match /vehicles/{id}        { allow read, write: if hasFieldRole(); }
-    match /trips/{id}           { allow read, write: if hasFieldRole(); }
-    match /capture_issues/{id}  { allow read, write: if hasFieldRole(); }
-    match /snapshots/{id}       { allow read, write: if hasFieldRole(); }
-    match /snapshot_chunks/{id} { allow read, write: if hasFieldRole(); }
-    match /uploads/{id}         { allow read, write: if hasFieldRole(); }
+    match /snapshots/{id} { allow read, write: if isAdmin(); }
+    match /snapshot_chunks/{id} { allow read, write: if isAdmin(); }
+    match /uploads/{id} { allow read: if isStaff(); allow write: if isAdmin(); }
+    match /allocations/{id} { allow read, write: if isStaff(); }
+    match /trips/{id} { allow read, write: if isStaff(); }
 
-    // ---------- Weekly Report (was the standalone Feeder Dashboard) ----------
-    match /weekly_feederLookup/{id}   { allow read, write: if isStaffAccount(); }
-    match /weekly_currentReport/{id}  { allow read, write: if isStaffAccount(); }
-    match /weekly_previousReport/{id} { allow read, write: if isStaffAccount(); }
-    match /weekly_savedWeeks/{id}     { allow read, write: if isStaffAccount(); }
-
-    // ---------- Mobile Devices portal ----------
-    // Staff phones sign in anonymously, so reading and logging a device in/out is open to any
-    // signed-in session. Deleting records and changing settings needs the admin PIN account
-    // (or a hub staff sign-in).
-    match /records/{id} {
-      allow read, create, update: if signedIn();
-      allow delete: if isPortalAdmin() || isStaffAccount();
+    // ---------- Weekly Report (added) ----------
+    // The account owner, plus anyone with a profile role of admin, editor or supervisor.
+    function weeklyAccess() {
+      return isOwnerUid() || (hasProfile() && me().role in ['admin', 'editor', 'supervisor']);
     }
-    match /portal/{doc} {
-      allow read: if signedIn();
-      allow write: if isPortalAdmin() || isStaffAccount();
-    }
+    match /weekly_feederLookup/{id}   { allow read, write: if weeklyAccess(); }
+    match /weekly_currentReport/{id}  { allow read, write: if weeklyAccess(); }
+    match /weekly_previousReport/{id} { allow read, write: if weeklyAccess(); }
+    match /weekly_savedWeeks/{id}     { allow read, write: if weeklyAccess(); }
   }
 }
