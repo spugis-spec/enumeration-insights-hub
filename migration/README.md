@@ -13,7 +13,6 @@ For **each** project you want to copy (including `spugis` itself):
 | --- | --- | --- |
 | `spugis` (destination) | `keys/spugis.json` | always |
 | `dt-field-manager` | `keys/dt-field-manager.json` | Field Manager data + logins |
-| `device-collection-database` | `keys/device-collection-database.json` | Mobile Devices data |
 | the project the Feeder Dashboard used | `keys/feeder-dashboard-project.json` | Weekly Report data |
 
 Leave a section out of `config.json` to skip it. If the Feeder Dashboard already used `spugis`, leave `weekly` out and rename its collections by hand to `weekly_feederLookup`, `weekly_currentReport`, `weekly_previousReport`, `weekly_savedWeeks`.
@@ -44,4 +43,4 @@ Add `--overwrite` (`node migrate.mjs --overwrite`) to replace documents that alr
 - Uid references inside the data (`allocations.allocated_by`, `dts.updated_by`, `meta/setup.adminUid`) are updated to match.
 - Sub-collections are not copied. None of the three apps use them.
 - Anonymous sessions (device-portal staff phones) are not logins and are not copied.
-- Device-portal PIN accounts: set `"importPinAccounts": true` plus a `hash` block under `devices` to carry them over. Otherwise create `admin@device-portal.local` and `receiver@device-portal.local` in the `spugis` console with the PINs you want. The admin PIN must be at least 6 characters.
+- The Mobile Devices portal stays on its own Firebase project, so it is not part of this migration. The optional `devices` section in `migrate.mjs` is only for moving it into `spugis` later (it also needs Anonymous sign-in enabled there).
