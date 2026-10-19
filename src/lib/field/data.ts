@@ -11,6 +11,11 @@ export type Allocation = { id: string; dt_id: string; enumerator_id: string; all
 export type Submission = { id: string; username: string | null; feeder_id: string | null; dt_id: string | null; captured_at: string | null; day: string | null; count: number; fid?: string | null };
 /** Only captures with a detected problem are kept row-by-row, so staff can find and fix the exact submission. Clean rows are only counted. */
 export type CaptureIssue = { id: string; username: string | null; feeder_id: string | null; dt_id: string | null; captured_at: string | null; reason: string; call_back_form_no: string | null; customer_no: string | null; building_code: string | null; upload: string | null };
+/** A saved answer to an alert. kind "user" covers every "not on staff list" alert for that username; kind "alert" covers one alert. */
+export type Resolution = { id: string; kind: "user" | "alert"; key: string; username?: string | null; reason?: string | null; response: string; note?: string | null; resolved_at: string; resolved_by?: string | null };
+export const STAFF_REASON = "Enumerator not on staff list";
+export const STAFF_RESPONSES = ["Resigned", "Left", "Off the project", "Temporarily out", "Supervisor"] as const;
+export const WRONG_RESPONSES = ["Corrected", "Approved", "Reallocated", "Mistake", "Warned"] as const;
 export type Vehicle = { id: string; name: string; driver: string | null; capacity: number | null; icon: string | null; status: string | null; status_note?: string | null };
 export type Trip = { id: string; vehicle_id: string | null; trip_date: string; destination: string | null; feeder_id: string | null; notes: string | null; staff: string[] | null };
 
@@ -46,7 +51,7 @@ export function useAppData() {
   return useQuery({
     queryKey: ["appdata"],
     queryFn: async () => {
-      const [feeders, dts, enumerators, allocations, submissions, vehicles, trips, capture_issues] = await Promise.all([
+      const [feeders, dts, enumerators, allocations, submissions, vehicles, trips, capture_issues, alert_resolutions] = await Promise.all([
         listAll<any>("feeders").then((r) => withDefaults<Feeder>(r, { area: null, feeder_type: null, est_customer_points: null, start_date: null, locked: false, target_per_staff_day: 40, working_days_per_week: 6 })),
         listAll<any>("dts").then((r) => withDefaults<DT>(r, { status: "unassigned", status_note: null, dt_name: null, dt_type: null })),
         listAll<any>("enumerators").then((r) => withDefaults<Enumerator>(r, { full_name: null, phone: null, supervisor: null, active: true })),
@@ -55,8 +60,9 @@ export function useAppData() {
         listAll<any>("vehicles").then((r) => withDefaults<Vehicle>(r, { status: "available", driver: null, capacity: 8, icon: "🚐" })),
         listAll<any>("trips").then((r) => withDefaults<Trip>(r, { staff: [], destination: null, feeder_id: null, notes: null })),
         listAll<any>("capture_issues").catch(() => []).then((r) => withDefaults<CaptureIssue>(r, { call_back_form_no: null, customer_no: null, building_code: null, feeder_id: null, captured_at: null, upload: null })),
+        listAll<Resolution>("alert_resolutions").catch(() => [] as Resolution[]),
       ]);
-      return buildModel({ feeders, dts, enumerators, allocations, submissions, vehicles, trips, capture_issues });
+      return buildModel({ feeders, dts, enumerators, allocations, submissions, vehicles, trips, capture_issues, alert_resolutions });
     },
   });
 }
@@ -78,14 +84,16 @@ export type Alert = {
   feeder_id: string | null;
   reason: string;
   count: number;
+  first: string | null;
   last: string | null;
 };
+export type ResolvedAlert = Alert & { response: string; auto: boolean; resolution?: Resolution | undefined };
 
 export function buildModel(raw: {
   feeders: Feeder[]; dts: DT[]; enumerators: Enumerator[]; allocations: Allocation[];
-  submissions: Submission[]; vehicles: Vehicle[]; trips: Trip[]; capture_issues?: CaptureIssue[];
+  submissions: Submission[]; vehicles: Vehicle[]; trips: Trip[]; capture_issues?: CaptureIssue[]; alert_resolutions?: Resolution[];
 }) {
-  raw = { ...raw, capture_issues: raw.capture_issues ?? [] };
+  raw = { ...raw, capture_issues: raw.capture_issues ?? [], alert_resolutions: raw.alert_resolutions ?? [] };
   const feederById = new Map(raw.feeders.map((f) => [f.feeder_id, f]));
   const dtById = new Map(raw.dts.map((d) => [d.dt_id, d]));
   const enumById = new Map(raw.enumerators.map((e) => [e.id, e]));
@@ -114,27 +122,77 @@ export function buildModel(raw: {
     if (!s.dt_id) continue;
     const dt = dtById.get(s.dt_id);
     const en = enumByUser.get(norm(s.username));
+    const day = s.day ?? s.captured_at?.slice(0, 10) ?? null;
     let reason = "";
     if (!dt) reason = "DT not in lookup";
     else if (s.feeder_id && dt.feeder_id !== s.feeder_id) reason = `Feeder mismatch (captured on ${s.feeder_id}, DT belongs to ${dt.feeder_id})`;
-    else if (!en) reason = "Enumerator not on staff list";
-    else if (lockedFeeders.has(dt.feeder_id)) {
-      const allowed = (allocsByDt.get(dt.dt_id) ?? []).some((a) => a.enumerator_id === en.id && a.status !== "cancelled");
-      if (!allowed) reason = (allocsByDt.get(dt.dt_id) ?? []).length ? "DT allocated to someone else" : "DT not allocated to anyone";
-    }
+    else if (!en) reason = STAFF_REASON;
+    else if (lockedFeeders.has(dt.feeder_id)) reason = allocationProblem(allocsByDt.get(dt.dt_id) ?? [], en.id, day);
     if (!reason) continue;
     const key = `${norm(s.username)}|${s.dt_id}|${reason}`;
     const cur = alertMap.get(key);
     if (cur) {
       cur.count += s.count;
       if (s.captured_at && (!cur.last || s.captured_at > cur.last)) cur.last = s.captured_at;
+      if (s.captured_at && (!cur.first || s.captured_at < cur.first)) cur.first = s.captured_at;
     } else {
-      alertMap.set(key, { key, username: s.username ?? "unknown", enumerator: en, dt_id: s.dt_id, dt, feeder_id: s.feeder_id, reason, count: s.count, last: s.captured_at });
+      alertMap.set(key, { key, username: s.username ?? "unknown", enumerator: en, dt_id: s.dt_id, dt, feeder_id: s.feeder_id, reason, count: s.count, first: s.captured_at, last: s.captured_at });
     }
   }
-  const alerts = [...alertMap.values()].sort((a, b) => (b.last ?? "").localeCompare(a.last ?? ""));
 
-  return { ...raw, capture_issues: raw.capture_issues ?? [], feederById, dtById, enumById, enumByUser, subsByDt, subsByFeeder, allocsByDt, alerts };
+  // Answers already given. A "user" answer covers all of that person's "not on staff list" alerts.
+  const resUser = new Map<string, Resolution>();
+  const resAlert = new Map<string, Resolution>();
+  for (const r of raw.alert_resolutions ?? []) (r.kind === "user" ? resUser : resAlert).set(r.key, r);
+  // Supervisors capture too. A capture username that matches a supervisor name on the staff list is not a stranger.
+  const squash = (x: string | null | undefined) => norm(x).replace(/[^a-z0-9]/g, "");
+  const supervisorKeys = new Set(raw.enumerators.map((e) => squash(e.supervisor)).filter(Boolean));
+
+  const alerts: Alert[] = [];
+  const resolvedAlerts: ResolvedAlert[] = [];
+  let supervisorCaptures = 0;
+  for (const a of [...alertMap.values()].sort((x, y) => (y.last ?? "").localeCompare(x.last ?? ""))) {
+    const staffReason = a.reason === STAFF_REASON;
+    if (staffReason && supervisorKeys.has(squash(a.username))) {
+      supervisorCaptures += a.count;
+      resolvedAlerts.push({ ...a, response: "Supervisor", auto: true });
+      continue;
+    }
+    const res = (staffReason ? resUser.get(norm(a.username)) : undefined) ?? resAlert.get(a.key);
+    if (res) {
+      resolvedAlerts.push({ ...a, response: res.response, auto: false, resolution: res });
+      continue;
+    }
+    alerts.push(a);
+  }
+
+  // The "captures to correct" list follows the same answers.
+  const issueHandled = (i: CaptureIssue) => {
+    const u = norm(i.username);
+    if (i.reason === STAFF_REASON && (supervisorKeys.has(squash(i.username)) || resUser.has(u))) return true;
+    return resAlert.has(`${u}|${i.dt_id}|${i.reason}`);
+  };
+  raw = { ...raw, capture_issues: (raw.capture_issues ?? []).filter((i) => !issueHandled(i)) };
+
+  // Rows dated in the future are misread dates, never real captures.
+  const limit = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const futureIds = {
+    submissions: raw.submissions.filter((s) => (s.day ?? s.captured_at?.slice(0, 10) ?? "") > limit).map((s) => s.id),
+    issues: (raw.capture_issues ?? []).filter((i) => (i.captured_at?.slice(0, 10) ?? "") > limit).map((i) => i.id),
+  };
+
+  return { ...raw, capture_issues: raw.capture_issues ?? [], feederById, dtById, enumById, enumByUser, subsByDt, subsByFeeder, allocsByDt, alerts, resolvedAlerts, supervisorCaptures, futureIds };
+}
+
+/**
+ * On a LOCKED feeder a capture must be on a DT that is allocated to that enumerator and not yet completed.
+ * Captures dated up to the completion day still count; later ones are flagged.
+ */
+function allocationProblem(all: Allocation[], enumId: string, day: string | null): string {
+  const mine = all.filter((a) => a.enumerator_id === enumId && a.status !== "cancelled");
+  if (!mine.length) return all.length ? "DT allocated to someone else" : "DT not allocated to anyone";
+  if (day && mine.every((a) => a.status === "completed" && a.completed_on && day > a.completed_on)) return "Captured after DT was completed";
+  return "";
 }
 
 export type Model = ReturnType<typeof buildModel>;
@@ -222,17 +280,14 @@ export function waLink(phone: string | null | undefined, text: string) {
  * Checks one capture against the lookup, staff list and allocations. Returns the problem, or "" when the capture is fine.
  * Same rules as the Capture Alerts list.
  */
-export function captureIssueReason(m: Model, username: string | null, feederId: string | null, dtId: string | null): string {
+export function captureIssueReason(m: Model, username: string | null, feederId: string | null, dtId: string | null, day: string | null = null): string {
   if (!dtId) return "No DT ID on capture";
   const dt = m.dtById.get(dtId);
   if (!dt) return "DT not in lookup";
   if (feederId && dt.feeder_id !== feederId) return `Feeder mismatch (captured on ${feederId}, DT belongs to ${dt.feeder_id})`;
   const en = m.enumByUser.get(norm(username));
-  if (!en) return "Enumerator not on staff list";
-  if (m.feederById.get(dt.feeder_id)?.locked) {
-    const all = m.allocsByDt.get(dt.dt_id) ?? [];
-    if (!all.some((a) => a.enumerator_id === en.id && a.status !== "cancelled")) return all.length ? "DT allocated to someone else" : "DT not allocated to anyone";
-  }
+  if (!en) return STAFF_REASON;
+  if (m.feederById.get(dt.feeder_id)?.locked) return allocationProblem(m.allocsByDt.get(dt.dt_id) ?? [], en.id, day);
   return "";
 }
 

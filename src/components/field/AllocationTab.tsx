@@ -1,13 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Lock, MessageCircle, Unlock } from "lucide-react";
-import { addRow, updateRow } from "@/lib/field/db";
+import { addRow, patchMany, updateRow } from "@/lib/field/db";
 import { auth } from "@/lib/field/firebase";
 import { activeAllocs, DT_STATUSES, feederStats, fmtDate, isPrivateDt, openDtsByEnumerator, useRefresh, waLink, type DT, type Model } from "@/lib/field/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Section, Stat, StatusBadge, selectCls } from "./common";
+import { Section, Stat, selectCls } from "./common";
 import { useConfirm } from "./ConfirmDialog";
 
 export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: boolean }) {
@@ -20,6 +20,9 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
   const [fq, setFq] = useState("");
   const [allocDt, setAllocDt] = useState<DT | null>(null);
   const [statusDt, setStatusDt] = useState<DT | null>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  useEffect(() => { setSel(new Set()); }, [feederId]);
 
   const feederMatches = useMemo(() => {
     const t = fq.trim().toLowerCase();
@@ -62,6 +65,65 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
     });
     refresh();
   }
+
+  /** Completes many DTs at once: closes their active allocations and marks the DTs completed. */
+  async function bulkComplete(list: DT[]) {
+    const todo = list.filter((d) => d.status !== "completed");
+    if (!todo.length) return toast.message("Those DTs are already completed");
+    setBulkBusy(true);
+    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date().toISOString();
+    try {
+      const allocs = todo.flatMap((d) => activeAllocs(m, d.dt_id));
+      await patchMany("allocations", allocs.map((a) => ({ id: a.id, patch: { status: "completed", completed_on: today } })));
+      await patchMany("dts", todo.map((d) => ({ id: d.id, patch: { status: "completed", updated_at: now } })));
+    } catch (e: any) { setBulkBusy(false); return toast.error(e.message); }
+    setSel(new Set());
+    setBulkBusy(false);
+    toast.success(`${todo.length} DT${todo.length > 1 ? "s" : ""} marked completed`);
+    refresh();
+  }
+
+  const askBulkComplete = (list: DT[]) => {
+    const n = list.filter((d) => d.status !== "completed").length;
+    if (!n) return toast.message("Those DTs are already completed");
+    ask({
+      title: `Mark ${n} DT${n > 1 ? "s" : ""} as completed?`,
+      body: <p>Their allocations will be closed and the DTs marked <b>Completed</b>.</p>,
+      confirmLabel: `Yes, complete ${n}`,
+      onConfirm: () => bulkComplete(list),
+    });
+  };
+
+  /** Changes a status straight from the table. Statuses that need more information open the matching dialog. */
+  function changeStatus(d: DT, to: string) {
+    if (to === d.status) return;
+    const acts = activeAllocs(m, d.dt_id);
+    if (to === "completed") return void completeAlloc(d);
+    if (to === "unassigned") {
+      if (acts.length) return ask({ title: "Unassign this DT?", danger: true, body: <p><b>{d.dt_name || d.dt_id}</b> will be removed from its enumerators and go back to <b>Not assigned</b>.</p>, confirmLabel: "Yes, unassign", onConfirm: () => unassign(d) });
+      return void updateRow("dts", d.id, { status: "unassigned", updated_at: new Date().toISOString() }).then(refresh, (e) => toast.error(e.message));
+    }
+    if (to === "assigned") {
+      if (acts.length) return void updateRow("dts", d.id, { status: "assigned", updated_at: new Date().toISOString() }).then(refresh, (e) => toast.error(e.message));
+      return setAllocDt(d); // assigned needs someone to assign it to
+    }
+    setStatusDt({ ...d, status: to }); // problematic / access denied: ask for the reason
+  }
+
+  const statusSelect = (d: DT) => (
+    <select
+      aria-label={`Status of ${d.dt_name || d.dt_id}`}
+      value={d.status}
+      onChange={(e) => changeStatus(d, e.target.value)}
+      className={"h-7 rounded border px-1 text-xs font-extrabold uppercase " + (d.status === "unassigned" ? "border-destructive text-destructive" : d.status === "assigned" ? "border-success text-success" : d.status === "completed" ? "border-primary text-primary" : "border-warning")}
+    >
+      {DT_STATUSES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+    </select>
+  );
+
+  const toggleSel = (id: string) => setSel((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const selected = m.dts.filter((d) => sel.has(d.dt_id));
 
   async function unassign(dt: DT) {
     for (const a of activeAllocs(m, dt.dt_id)) await updateRow("allocations", a.id, { status: "cancelled" });
@@ -124,6 +186,11 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
         </button>
         {open && (
           <ul className="mt-1 max-h-56 overflow-y-auto rounded border bg-background text-xs font-normal">
+            <li className="sticky top-0 border-b bg-background px-2 py-1">
+              <button type="button" disabled={bulkBusy} className="w-full rounded border border-success px-2 py-1 font-bold text-success hover:bg-success/10" onClick={() => askBulkComplete(o)}>
+                ✓ Mark all {o.length} other DT{o.length > 1 ? "s" : ""} as complete
+              </button>
+            </li>
             {o.map((x) => (
               <li key={x.dt_id} className="flex items-center gap-1 border-b px-2 py-1 last:border-0">
                 <button type="button" className="flex-1 text-left hover:underline" onClick={() => goToDt(x)}>
@@ -167,6 +234,14 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
               {DT_STATUSES.filter((s) => s.value !== "unassigned").map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
             <Input className="w-full sm:w-56" placeholder="Search DT name or ID" value={q} onChange={(e) => setQ(e.target.value)} />
+            <div className="inline-flex overflow-hidden rounded-md border text-sm font-bold" role="group" aria-label="Assigned or not assigned">
+              {([["all", "All", stats.total], ["assigned", "Assigned", stats.assigned], ["pending", "Not assigned", stats.unassigned]] as const).map(([v, label, n]) => (
+                <button key={v} type="button" onClick={() => setStatusF(v)} className={"px-3 py-1.5 " + (statusF === v ? "bg-foreground text-background" : "hover:bg-muted")}>{label} <span className="opacity-70">{n}</span></button>
+              ))}
+            </div>
+            <Button variant="outline" size="sm" className="h-9" onClick={() => setSel(new Set(m.dts.filter((d) => d.feeder_id === feederId && d.status === "assigned").map((d) => d.dt_id)))} disabled={!stats.assigned}>
+              Select all assigned ({stats.assigned})
+            </Button>
             {isAdmin && feeder && (
               <Button variant={feeder.locked ? "default" : "outline"} size="sm" className="h-9" onClick={toggleLock}>
                 {feeder.locked ? <><Lock /> Locked: unlock</> : <><Unlock /> Lock feeder</>}
@@ -177,6 +252,15 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
           {feeder && <p className="mt-2 text-xs text-muted-foreground">Area: {feeder.area ?? "—"} · Type: {feeder.feeder_type ?? "—"} · Start date: {fmtDate(feeder.start_date)}</p>}
         </Section>
 
+        {selected.length > 0 && (
+          <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 shadow">
+            <span className="text-sm font-bold">{selected.length} DT{selected.length > 1 ? "s" : ""} selected</span>
+            <Button size="sm" disabled={bulkBusy} onClick={() => askBulkComplete(selected)}>{bulkBusy ? "Saving…" : `✓ Mark ${selected.length} as complete`}</Button>
+            <Button size="sm" variant="outline" onClick={() => setSel(new Set(rows.map((d) => d.dt_id)))}>Select all {rows.length} shown</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSel(new Set())}>Clear</Button>
+          </div>
+        )}
+
         {/* Phone view: one card per DT with big buttons */}
         <div className="space-y-2 md:hidden">
           {rows.map((d) => {
@@ -186,11 +270,12 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
             return (
               <div key={d.dt_id} className={"rounded-lg border bg-card p-3 shadow-sm " + (d.status === "unassigned" ? "border-l-4 border-l-destructive" : d.status === "assigned" ? "border-l-4 border-l-success" : "")}>
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+                  <input type="checkbox" className="mt-1 h-5 w-5 shrink-0" aria-label={`Select ${d.dt_name || d.dt_id}`} checked={sel.has(d.dt_id)} onChange={() => toggleSel(d.dt_id)} />
+                  <div className="min-w-0 flex-1">
                     <div className={"truncate font-extrabold " + (d.status === "unassigned" ? "text-destructive" : d.status === "assigned" ? "text-success" : "")}>{d.dt_name || "(no name)"}</div>
                     <div className="text-xs text-muted-foreground">{d.dt_id} · {d.dt_type}{isPrivateDt(d) ? " · private" : ""}</div>
                   </div>
-                  <StatusBadge status={d.status} />
+                  {statusSelect(d)}
                 </div>
                 {d.status_note && <div className="mt-1 text-xs italic text-warning-foreground">{d.status_note}</div>}
                 <div className="mt-2 space-y-1 text-sm">
@@ -212,7 +297,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
         <div className="hidden overflow-x-auto rounded-lg border bg-card shadow-sm md:block">
           <table className="w-full text-sm">
             <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
-              <tr><th className="p-3">DT</th><th>Status</th><th>Enumerators</th><th>Allocated</th><th>Captures</th><th className="text-right pr-3">Actions</th></tr>
+              <tr><th className="p-3"><input type="checkbox" aria-label="Select all shown" checked={!!rows.length && rows.every((d) => sel.has(d.dt_id))} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((d) => d.dt_id)) : new Set())} /></th><th>DT</th><th>Status</th><th>Enumerators</th><th>Allocated</th><th>Captures</th><th className="text-right pr-3">Actions</th></tr>
             </thead>
             <tbody>
               {rows.map((d) => {
@@ -222,12 +307,13 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
                 const names = acts.map((a) => m.enumById.get(a.enumerator_id)).filter(Boolean);
                 return (
                   <tr key={d.dt_id} className={"border-t " + (d.status === "unassigned" ? "bg-destructive/5" : d.status === "assigned" ? "bg-success/5" : "")}>
-                    <td className="p-3">
+                    <td className="p-3"><input type="checkbox" aria-label={`Select ${d.dt_name || d.dt_id}`} checked={sel.has(d.dt_id)} onChange={() => toggleSel(d.dt_id)} /></td>
+                    <td className="p-1">
                       <div className={"font-extrabold " + (d.status === "unassigned" ? "text-destructive" : d.status === "assigned" ? "text-success" : "")}>{d.dt_name || "(no name)"}</div>
                       <div className="text-xs text-muted-foreground">{d.dt_id} · {d.dt_type}</div>
                       {d.status_note && <div className="text-xs italic text-warning-foreground">{d.status_note}</div>}
                     </td>
-                    <td><StatusBadge status={d.status} /></td>
+                    <td>{statusSelect(d)}</td>
                     <td className="text-xs">
                       {names.length ? names.map((e) => <div key={e!.id}>{staffName({ enumId: e!.id, dtId: d.dt_id })}</div>) : "—"}
                     </td>
@@ -237,7 +323,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
                   </tr>
                 );
               })}
-              {!rows.length && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No DTs match.</td></tr>}
+              {!rows.length && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">No DTs match.</td></tr>}
             </tbody>
           </table>
         </div>
