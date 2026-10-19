@@ -5,6 +5,8 @@ import { CheckCircle2, Download, History, Loader2, Save, Trash2, X, XCircle } fr
 import { addMany, patchMany, removeMany, updateRow, upsertMany, safeId } from "@/lib/field/db";
 import { auth } from "@/lib/field/firebase";
 import { captureIssueReason, useRefresh, type Model } from "@/lib/field/data";
+import { parseCaptureTime } from "@/lib/field/dates";
+import { fetchDashboardCustomerRows } from "@/lib/field/dashboardSync";
 import {
   UPLOADED_COLLECTIONS,
   DATA_COLLECTIONS,
@@ -51,7 +53,7 @@ async function readSheet(file: File): Promise<Record<string, string | null>[]> {
     return o;
   });
 }
-function cellText(v: any): string | null {
+export function cellText(v: any): string | null {
   if (v == null) return null;
   if (v instanceof Date) return isNaN(v.getTime()) ? null : v.toISOString();
   if (typeof v === "number") return Number.isInteger(v) ? v.toFixed(0) : String(v);
@@ -77,10 +79,18 @@ function pick(row: Record<string, any>, ...names: string[]) {
     }
   return null;
 }
-function parseTime(v: string | null) {
-  if (!v) return null;
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? null : d.toISOString();
+/** The capture time column: a known name, otherwise any column with "time" or "date" in its name (as the Dashboard does). */
+function pickTime(row: Record<string, any>) {
+  const direct = pick(row, "time", "captured_at", "datetime", "date_time", "capture_time", "created_at", "date");
+  if (direct) return direct;
+  const k = Object.keys(row).find((c) => /time|date/i.test(c) && row[c] != null && String(row[c]).trim() !== "");
+  return k ? String(row[k]).trim() : null;
+}
+function pickUser(row: Record<string, any>) {
+  const direct = pick(row, "username", "USER NAME", "USER");
+  if (direct) return direct;
+  const k = Object.keys(row).find((c) => /username/i.test(c) && row[c] != null && String(row[c]).trim() !== "");
+  return k ? String(row[k]).trim() : null;
 }
 const compact = <T extends Record<string, any>>(o: T) =>
   Object.fromEntries(Object.entries(o).filter(([, v]) => v != null)) as T;
@@ -495,13 +505,14 @@ export function UploadsTab({ m }: { m: Model }) {
     });
   };
 
-  const doCaptures = async (file: File, legacyIds: string[], keepRestore: boolean) => {
+  const doCaptures = async (file: File | null, legacyIds: string[], keepRestore: boolean, source?: { rows: Record<string, string | null>[]; label: string }) => {
     let groupsOut: any[] | null = null;
+    const label = source?.label ?? file!.name;
     await run(
       "enum",
       async (p) => {
         p("Reading file…", 0, 0);
-        const rows = await readSheet(file);
+        const rows = source ? source.rows : await readSheet(file!);
         p(`Processing ${rows.length.toLocaleString()} rows…`, 0, 0);
         const headers = rows[0] ? Object.keys(rows[0]) : [];
         const groups = new Map<string, any>();
@@ -512,7 +523,7 @@ export function UploadsTab({ m }: { m: Model }) {
           dayMax: string | null = null;
 
         for (const r of rows) {
-          const username = pick(r, "username", "USER NAME", "USER");
+          const username = pickUser(r);
           const feeder = pick(r, "feeder", "FEEDER_ID", "FEEDER ID");
           // DT ID: a column called DT_ID / DT ID, otherwise the first filled column starting with dss_
           let dt = pick(r, "DT_ID", "DT ID", "DTID");
@@ -535,7 +546,7 @@ export function UploadsTab({ m }: { m: Model }) {
           if (!username && !feeder && !dt) continue; // blank row
           rowsRead++;
           if (dt) withDt++;
-          const at = parseTime(pick(r, "time", "captured_at"));
+          const at = parseCaptureTime(pickTime(r));
           const day = at ? at.slice(0, 10) : null;
           if (day) {
             if (!dayMin || day < dayMin) dayMin = day;
@@ -559,13 +570,13 @@ export function UploadsTab({ m }: { m: Model }) {
             );
           g.count++;
           // Keep the row only when something is wrong with it, with the fields staff need to find the submission again.
-          const reason = captureIssueReason(m, username, feeder, dt);
+          const reason = captureIssueReason(m, username, feeder, dt, day);
           if (reason) {
             const cb = pick(r, "call_back_form_no", "CALL BACK FORM NO", "CALLBACK_FORM_NO", "call_back_form_number");
             const cust = pick(r, "customer_no", "CUSTOMER NO", "CUSTOMER_NUMBER", "customer_number");
             const bld = pick(r, "building_code", "BUILDING CODE", "BUILDING_CODE");
             const iid = [(username ?? "").toLowerCase(), dt ?? "", cb ?? "", cust ?? "", bld ?? "", at ?? "", cb || cust || bld || at ? "" : String(issues.size)].join("|");
-            issues.set(iid, { username, feeder_id: feeder, dt_id: dt, captured_at: at, reason, call_back_form_no: cb, customer_no: cust, building_code: bld, upload: file.name });
+            issues.set(iid, { username, feeder_id: feeder, dt_id: dt, captured_at: at, reason, call_back_form_no: cb, customer_no: cust, building_code: bld, upload: label });
           }
           if (at && (!g.captured_at || at > g.captured_at)) g.captured_at = at;
           if (at && (!g.first_at || at < g.first_at)) g.first_at = at;
@@ -602,7 +613,7 @@ export function UploadsTab({ m }: { m: Model }) {
           );
         await logUpload({
           kind: "captures",
-          filename: file.name,
+          filename: label,
           rows_read: rowsRead,
           rows_with_dt: withDt,
           saved: list.length,
@@ -616,10 +627,32 @@ export function UploadsTab({ m }: { m: Model }) {
         groupsOut = list.map((g) => ({ ...g, captured_at: g.first_at }));
         return `Imported ${rowsRead.toLocaleString()} captures as ${list.length.toLocaleString()} summary rows (${withDt.toLocaleString()} with a DT ID). Re-uploading the same file updates, not duplicates. ${issues.size.toLocaleString()} capture(s) with problems kept for Capture Alerts; the rest were counted and discarded.`;
       },
-      keepRestore ? `Before captures upload (${file.name})` : undefined,
+      keepRestore ? `Before captures upload (${label})` : undefined,
     );
     if (groupsOut) offerBaseline(groupsOut);
   };
+
+  async function useDashboardUpload() {
+    setBusy("dash");
+    try {
+      const got = await fetchDashboardCustomerRows();
+      if (!got.rows.length) {
+        toast.error("The Dashboard has no Customer Enumeration rows saved in the cloud yet. Upload the file there under Upload Data Files > Customer Enumeration and click Save to Cloud.");
+        return;
+      }
+      const when = got.savedAt ? new Date(got.savedAt).toLocaleString() : "unknown time";
+      ask({
+        title: "Use the Dashboard's Customer Enumeration upload?",
+        body: <p>{got.rows.length.toLocaleString()} rows saved from the Dashboard ({when}). They are checked against your staff list and DT allocations, and any unauthorized captures are added to Capture Alerts. Running it again on the same data updates, not duplicates.</p>,
+        confirmLabel: "Check and import",
+        onConfirm: () => void doCaptures(null, [], false, { rows: got.rows, label: `Dashboard upload (${when})` }),
+      });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't read the Dashboard upload");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   const staff = (file: File) =>
     run(
@@ -1039,6 +1072,16 @@ export function UploadsTab({ m }: { m: Model }) {
         () => download(() => downloadCaptures(m), "captures"),
         clearCapturesAsk,
       )}
+      <div className="md:col-span-2">
+        <Section title="3b. Or use the Dashboard's upload">
+          <p className="mb-3 text-sm text-muted-foreground">
+            No need to upload the same file twice. In the Dashboard, upload the file under <b>Upload Data Files &gt; Customer Enumeration</b> and click <b>Save to Cloud</b>, then press the button here. The rows are checked against the staff list and DT allocations, and unauthorized captures are stored in Capture Alerts.
+          </p>
+          <Button onClick={useDashboardUpload} disabled={!!busy}>
+            {busy === "dash" ? "Reading the Dashboard upload…" : "Use the Dashboard's Customer Enumeration upload"}
+          </Button>
+        </Section>
+      </div>
       {card(
         "points",
         "4. Estimated customer points",

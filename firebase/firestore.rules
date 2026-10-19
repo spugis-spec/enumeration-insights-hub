@@ -83,6 +83,10 @@ service cloud.firestore {
     match /allocations/{id} { allow read, write: if isStaff(); }
     match /trips/{id} { allow read, write: if isStaff(); }
 
+    // ---------- Capture Alerts answers (added) ----------
+    // Saved answers such as "Resigned" or "Corrected". Staff can read them; only admins write.
+    match /alert_resolutions/{id} { allow read: if isStaff(); allow write: if isAdmin(); }
+
     // ---------- Weekly Report (added) ----------
     // The account owner, plus anyone with a profile role of admin, editor or supervisor.
     function weeklyAccess() {
