@@ -14,7 +14,7 @@ Everything except the Mobile Devices portal runs on the `spugis` Firebase projec
 ## 1. One-time setup in the `spugis` Firebase console
 
 1. **Firestore.** Build > Firestore Database > Create database (if it does not exist yet). Pick a region near you.
-2. **Rules.** `firebase/firestore.rules` is your live `spugis` rules plus the `alert_resolutions` block (Capture Alerts answers) and the four `weekly_*` blocks the Weekly Report needs. If your live rules already match it, nothing to do; otherwise paste it into Firestore > Rules and publish.
+2. **Rules.** `firebase/firestore.rules` is your live `spugis` rules plus the `usernames` block (sign in with a username), the `alert_resolutions` block (Capture Alerts answers) and the four `weekly_*` blocks the Weekly Report needs. If your live rules already match it, nothing to do; otherwise paste it into Firestore > Rules and publish.
 3. **Authorized domains.** Authentication > Settings > Authorized domains: add the domain you host this app on in **both** `spugis` and `device-collection-database` (the portal signs in there).
 4. **Realtime Database rules.** Nothing to change for this merge. (`firebase/database.rules.notes.md` only matters if you later move the portal into `spugis`.)
 

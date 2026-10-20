@@ -2,11 +2,13 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { useQueryClient } from "@tanstack/react-query";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { getFirebaseAuth } from "./firebase";
+import { resolveLoginEmail } from "./username";
 
 type AuthState = {
   user: User | null;
   ready: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  /** `identifier` is an email or a username. */
+  login: (identifier: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -33,7 +35,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthState = {
     user,
     ready,
-    login: async (email, password) => {
+    login: async (identifier, password) => {
+      const email = await resolveLoginEmail(identifier);
       await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
     },
     logout: () => signOut(getFirebaseAuth()),
