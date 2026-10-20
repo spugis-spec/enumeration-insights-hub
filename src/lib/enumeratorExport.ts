@@ -9,13 +9,13 @@ import { getDb } from "./firebase";
 const GROUPS = ["aedc", "bss", "nysc"] as const;
 
 type Raw = Record<string, unknown> | null;
-type Member = { group: string; username: string };
-type Team = { name: string; members: Member[] };
+export type Member = { group: string; username: string };
+export type Team = { name: string; members: Member[] };
 
 const toArr = (x: unknown): any[] =>
   Array.isArray(x) ? x.filter(Boolean) : x && typeof x === "object" ? Object.values(x as object).filter(Boolean) : [];
 
-function readTeams(raw: Raw): Team[] {
+export function readTeams(raw: Raw): Team[] {
   if (!raw) return [];
   const clean = (ms: unknown): Member[] =>
     toArr(ms)

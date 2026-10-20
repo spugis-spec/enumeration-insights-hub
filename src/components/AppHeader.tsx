@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { CloudTools } from "@/components/CloudTools";
+import { friendlyAuthError } from "@/lib/username";
 
 export function AppHeader() {
   const { user, ready, login, logout } = useAuth();
@@ -55,13 +56,13 @@ export function AppHeader() {
                   setOpen(false);
                   setPw("");
                 } catch (e) {
-                  setErr((e as Error).message || "Invalid credentials");
+                  setErr(friendlyAuthError(e));
                 } finally {
                   setBusy(false);
                 }
               }}
             >
-              <input className="w-full rounded-md border bg-background px-3 py-2 text-sm" type="email" placeholder="Admin email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input className="w-full rounded-md border bg-background px-3 py-2 text-sm" type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="Username or email" value={email} onChange={(e) => setEmail(e.target.value)} required />
               <input className="w-full rounded-md border bg-background px-3 py-2 text-sm" type="password" placeholder="Password" value={pw} onChange={(e) => setPw(e.target.value)} required />
               {err && <p className="text-xs text-destructive">{err}</p>}
               <button disabled={busy} className="w-full rounded-md bg-primary py-2 text-sm font-medium text-primary-foreground disabled:opacity-60">{busy ? "Signing in…" : "Sign in"}</button>

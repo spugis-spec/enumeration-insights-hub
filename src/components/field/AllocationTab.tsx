@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Lock, MessageCircle, Unlock } from "lucide-react";
 import { addRow, patchMany, updateRow } from "@/lib/field/db";
+import { teamMatches, usePairTeams } from "@/lib/field/pairings";
 import { auth } from "@/lib/field/firebase";
 import { activeAllocs, DT_STATUSES, feederStats, fmtDate, isPrivateDt, openDtsByEnumerator, useRefresh, waLink, type DT, type Model } from "@/lib/field/data";
 import { Button } from "@/components/ui/button";
@@ -364,6 +365,10 @@ function AllocateDialog({ m, dt, openByEnum, onClose }: { m: Model; dt: DT; open
   const [notes, setNotes] = useState("");
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
+  // Team allocation is the default: it follows the Dashboard's Team Pairing Configuration.
+  const [mode, setMode] = useState<"team" | "individual">("team");
+  const pairs = usePairTeams(m.enumerators);
+  const teamList = pairs.teams.filter((t) => teamMatches(t, q));
   const list = m.enumerators.filter((e) => e.active !== false && (!q || `${e.full_name} ${e.username} ${e.supervisor}`.toLowerCase().includes(q.toLowerCase())));
 
   async function save() {
@@ -406,8 +411,48 @@ function AllocateDialog({ m, dt, openByEnum, onClose }: { m: Model; dt: DT; open
             <label>Allocation date<Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
             <label>Due date (optional)<Input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></label>
           </div>
-          <Input placeholder="Search enumerators" value={q} onChange={(e) => setQ(e.target.value)} />
-          <div className="max-h-60 overflow-y-auto rounded border">
+          <div className="inline-flex overflow-hidden rounded-md border text-sm font-bold" role="group" aria-label="Allocation type">
+            {([["team", "Team allocation"], ["individual", "Individual allocation"]] as const).map(([v, label]) => (
+              <button key={v} type="button" onClick={() => setMode(v)} className={"px-3 py-1.5 " + (mode === v ? "bg-foreground text-background" : "hover:bg-muted")}>{label}</button>
+            ))}
+          </div>
+          <Input placeholder={mode === "team" ? "Search team name or any member's name" : "Search enumerators"} value={q} onChange={(e) => setQ(e.target.value)} />
+          {mode === "team" && (
+            <div className="max-h-60 overflow-y-auto rounded border">
+              {teamList.map((t) => {
+                const ids = t.members.map((x) => x.enumeratorId).filter((x): x is string => !!x);
+                const all = ids.length > 0 && ids.every((id) => picked.includes(id));
+                const some = ids.some((id) => picked.includes(id));
+                return (
+                  <label key={t.key} className={"flex items-start gap-2 border-b px-3 py-2 last:border-0 " + (ids.length ? "cursor-pointer hover:bg-muted" : "opacity-60")}>
+                    <input
+                      type="checkbox" className="mt-1" disabled={!ids.length} checked={all}
+                      ref={(el) => { if (el) el.indeterminate = some && !all; }}
+                      onChange={(ev) => setPicked(ev.target.checked ? [...new Set([...picked, ...ids])] : picked.filter((x) => !ids.includes(x)))}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold">{t.name}</span>
+                      {t.members.map((mm) => (
+                        <span key={mm.group + mm.username} className="block text-xs">
+                          {mm.name} <span className="text-muted-foreground">· {mm.group.toUpperCase()} @{mm.username}</span>
+                          {!mm.enumeratorId && <span className="ml-1 font-bold text-warning"> not on staff list, can&apos;t be allocated</span>}
+                          {mm.enumeratorId && busyOn(mm.enumeratorId).length > 0 && <span className="ml-1 rounded bg-warning/20 px-1 font-bold">On {busyOn(mm.enumeratorId).map((x) => x.dt_name || x.dt_id).join(", ")}</span>}
+                        </span>
+                      ))}
+                    </span>
+                  </label>
+                );
+              })}
+              {pairs.loading && <p className="p-3 text-muted-foreground">Loading the Dashboard's team pairings…</p>}
+              {!pairs.loading && !teamList.length && (
+                <p className="p-3 text-muted-foreground">
+                  {pairs.failed ? "Couldn't read the Dashboard's team pairings." : pairs.teams.length ? "No team matches that search." : "No team pairings are saved in the Dashboard yet (Enumerator Mapping > Team Pairing Configuration, then save)."}{" "}
+                  <button type="button" className="font-bold underline" onClick={() => setMode("individual")}>Use individual allocation</button>
+                </p>
+              )}
+            </div>
+          )}
+          {mode === "individual" && <div className="max-h-60 overflow-y-auto rounded border">
             {list.map((e) => (
               <label key={e.id} className="flex cursor-pointer items-center gap-2 border-b px-3 py-2 last:border-0 hover:bg-muted">
                 <input type="checkbox" checked={picked.includes(e.id)} onChange={(ev) => setPicked(ev.target.checked ? [...picked, e.id] : picked.filter((x) => x !== e.id))} />
@@ -417,7 +462,12 @@ function AllocateDialog({ m, dt, openByEnum, onClose }: { m: Model; dt: DT; open
               </label>
             ))}
             {!list.length && <p className="p-3 text-muted-foreground">No enumerators. Admin must upload the staff list.</p>}
-          </div>
+          </div>}
+          {picked.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              <b>Selected ({picked.length}):</b> {picked.map((id) => m.enumById.get(id)?.full_name || m.enumById.get(id)?.username || id).join(", ")}
+            </p>
+          )}
           <Input placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
           {picked.length > 0 && (
             <div className="flex flex-wrap gap-1">

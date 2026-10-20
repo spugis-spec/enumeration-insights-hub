@@ -1,18 +1,20 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { createStaffUser, listStaffUsers, revokeStaffUser, sendReset } from "@/lib/field/users";
+import { createStaffUser, listStaffUsers, revokeStaffUser, sendReset, updateStaffUser, type Role, type StaffUser } from "@/lib/field/users";
 import { removeRow, upsertMany } from "@/lib/field/db";
 import { useRefresh, type Model } from "@/lib/field/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Section, selectCls } from "./common";
 
 export function UsersTab({ m }: { m: Model }) {
   const qc = useQueryClient();
   const refresh = useRefresh();
   const { data: users } = useQuery({ queryKey: ["staffusers"], queryFn: listStaffUsers });
-  const [f, setF] = useState({ full_name: "", email: "", phone: "", password: "", role: "supervisor" as "supervisor" | "admin" });
+  const [f, setF] = useState({ full_name: "", email: "", username: "", phone: "", password: "", role: "supervisor" as "supervisor" | "admin" });
+  const [editing, setEditing] = useState<StaffUser | null>(null);
   const [en, setEn] = useState({ username: "", full_name: "", phone: "", supervisor: "" });
 
   const [saving, setSaving] = useState(false);
@@ -26,9 +28,9 @@ export function UsersTab({ m }: { m: Model }) {
     try {
       await createStaffUser({ ...f, email });
       // Show the new person in the list straight away.
-      qc.setQueryData<any[]>(["staffusers"], (old) => [{ id: `new-${email}`, email, full_name: f.full_name, phone: f.phone, role: f.role }, ...(old ?? [])]);
+      qc.setQueryData<any[]>(["staffusers"], (old) => [{ id: `new-${email}`, email, full_name: f.full_name, phone: f.phone, role: f.role, username: f.username.trim().toLowerCase() || undefined }, ...(old ?? [])]);
       toast.success(`${f.role} account created for ${email}`, { id: t });
-      setF({ full_name: "", email: "", phone: "", password: "", role: "supervisor" });
+      setF({ full_name: "", email: "", username: "", phone: "", password: "", role: "supervisor" });
       qc.refetchQueries({ queryKey: ["staffusers"] });
     } catch (err: any) { toast.error(err.message, { id: t }); }
     finally { setSaving(false); }
@@ -49,6 +51,7 @@ export function UsersTab({ m }: { m: Model }) {
         <form onSubmit={add} className="grid grid-cols-2 gap-2 mb-4">
           <Input required placeholder="Full name" value={f.full_name} onChange={(e) => setF({ ...f, full_name: e.target.value })} />
           <Input required type="email" placeholder="Login email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
+          <Input placeholder="Username (optional, to sign in with)" autoCapitalize="none" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} />
           <Input placeholder="Phone" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
           <Input required minLength={8} type="text" placeholder="Password (min 8)" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} />
           <select className={selectCls} value={f.role} onChange={(e) => setF({ ...f, role: e.target.value as any })}>
@@ -60,9 +63,10 @@ export function UsersTab({ m }: { m: Model }) {
           <tbody>
             {users?.map((u) => (
               <tr key={u.id} className="border-t">
-                <td className="p-2 font-bold">{u.full_name}<div className="text-xs font-normal text-muted-foreground">{u.email}</div></td>
+                <td className="p-2 font-bold">{u.full_name}<div className="text-xs font-normal text-muted-foreground">{u.email}{u.username ? ` · @${u.username}` : " · no username yet"}</div></td>
                 <td className="uppercase text-xs font-bold">{u.role}</td>
                 <td className="text-right space-x-1">
+                  <Button size="sm" variant="outline" disabled={u.id.startsWith("new-")} onClick={() => setEditing(u)}>Edit</Button>
                   <Button size="sm" variant="outline" onClick={async () => {
                     if (!confirm(`Send a password-reset email to ${u.email}?`)) return;
                     try { await sendReset(u.email); toast.success("Reset email sent"); } catch (e: any) { toast.error(e.message); }
@@ -77,6 +81,8 @@ export function UsersTab({ m }: { m: Model }) {
           </tbody>
         </table>
       </Section>
+
+      {editing && <EditLoginDialog user={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); qc.refetchQueries({ queryKey: ["staffusers"] }); }} />}
 
       <Section title={`Enumerators (${m.enumerators.length})`}>
         <form onSubmit={addEnum} className="grid grid-cols-2 gap-2 mb-4">
@@ -105,5 +111,44 @@ export function UsersTab({ m }: { m: Model }) {
         </div>
       </Section>
     </div>
+  );
+}
+
+function EditLoginDialog({ user, onClose, onSaved }: { user: StaffUser; onClose: () => void; onSaved: () => void }) {
+  const [full_name, setName] = useState(user.full_name ?? "");
+  const [phone, setPhone] = useState(user.phone ?? "");
+  const [username, setUsername] = useState(user.username ?? "");
+  const [role, setRole] = useState<Role>(user.role === "admin" ? "admin" : "supervisor");
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    setBusy(true);
+    try {
+      await updateStaffUser(user, { full_name, phone, role, username });
+      toast.success(username.trim() ? `Saved. ${user.email} can now sign in with @${username.trim().toLowerCase()} or the email.` : "Saved");
+      onSaved();
+    } catch (e: any) {
+      toast.error(/permission/i.test(e?.message ?? "") ? "Not allowed yet: add the usernames block to the Firestore rules (see MERGE_GUIDE.md)." : (e?.message ?? "Couldn't save"));
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Edit login</DialogTitle></DialogHeader>
+        <div className="space-y-2 text-sm">
+          <label className="block">Email (sign-in, can't be changed here)<Input value={user.email} disabled /></label>
+          <label className="block">Username<Input autoCapitalize="none" placeholder="e.g. ada.sup" value={username} onChange={(e) => setUsername(e.target.value)} /></label>
+          <label className="block">Full name<Input value={full_name} onChange={(e) => setName(e.target.value)} /></label>
+          <label className="block">Phone<Input value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
+          <label className="block">Role
+            <select className={selectCls + " w-full"} value={role} onChange={(e) => setRole(e.target.value as Role)}>
+              <option value="supervisor">Supervisor</option><option value="admin">Admin</option>
+            </select>
+          </label>
+          <p className="text-xs text-muted-foreground">Leave the username empty to remove it. Passwords are changed with &quot;Send reset email&quot;.</p>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

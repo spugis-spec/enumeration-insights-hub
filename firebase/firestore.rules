@@ -83,6 +83,15 @@ service cloud.firestore {
     match /allocations/{id} { allow read, write: if isStaff(); }
     match /trips/{id} { allow read, write: if isStaff(); }
 
+    // ---------- Username sign-in (added) ----------
+    // Maps a username to the login email so people can sign in with either. Anyone can look up ONE
+    // username (get) but nobody can list them all. Only admins add, change or remove entries.
+    match /usernames/{name} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isHubAdmin() || isAdmin();
+    }
+
     // ---------- Capture Alerts answers (added) ----------
     // Saved answers such as "Resigned" or "Corrected". Staff can read them; only admins write.
     match /alert_resolutions/{id} { allow read: if isStaff(); allow write: if isAdmin(); }
