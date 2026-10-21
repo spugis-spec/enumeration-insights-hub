@@ -30,7 +30,7 @@ export function OverviewTab({ m, goTo }: { m: Model; goTo: (t: string) => void }
         <Stat label="Completed" value={s.completed} tone="accent" />
         <Stat label="Problem / denied" value={s.problematic + s.access_denied} tone="warning" />
         <Stat label="DTs with no capture" value={s.noCapture} tone="danger" />
-        <Stat label="Captures" value={m.submissions.reduce((n, x) => n + x.count, 0).toLocaleString()} />
+        <Stat label="Captures" value={m.customerSubmissions.reduce((n, x) => n + x.count, 0).toLocaleString()} />
       </div>
 
       {m.alerts.length > 0 && (

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Lock, MessageCircle, Unlock } from "lucide-react";
-import { addRow, patchMany, updateRow } from "@/lib/field/db";
+import { addRow, patchMany, removeMany, updateRow } from "@/lib/field/db";
 import { teamMatches, usePairTeams } from "@/lib/field/pairings";
 import { auth } from "@/lib/field/firebase";
-import { activeAllocs, DT_STATUSES, feederStats, fmtDate, isPrivateDt, openDtsByEnumerator, useRefresh, waLink, type DT, type Model } from "@/lib/field/data";
+import { activeAllocs, DT_STATUSES, feederStats, fmtDate, isPrivateDt, openDtsByEnumerator, useRefresh, waLink, type DT, type Model, SELF_ASSIGNED_REASON, type Capturer } from "@/lib/field/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -48,11 +48,13 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
         if (statusF === "all") return true;
         if (statusF === "nocapture") return !(m.subsByDt.get(d.dt_id) ?? 0);
         if (statusF === "pending") return d.status === "unassigned";
+        if (statusF === "needsauth") return m.pendingAuth.some((a) => a.dt_id === d.dt_id);
         return d.status === statusF;
       })
       .filter((d) => !q || `${d.dt_name} ${d.dt_id}`.toLowerCase().includes(q.toLowerCase()))
       .sort((a, b) => (a.status === "unassigned" ? -1 : 1) - (b.status === "unassigned" ? -1 : 1) || (a.dt_name ?? "").localeCompare(b.dt_name ?? ""));
   }, [m, feederId, statusF, q]);
+  const needAuthCount = new Set(m.pendingAuth.filter((a) => m.dtById.get(a.dt_id)?.feeder_id === feederId).map((a) => a.dt_id)).size;
 
   async function completeAlloc(dt: DT) {
     const acts = activeAllocs(m, dt.dt_id);
@@ -111,6 +113,63 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
     }
     setStatusDt({ ...d, status: to }); // problematic / access denied: ask for the reason
   }
+
+  /** Self-assigned DTs (a staff member captured on a DT nobody had assigned on the app) wait here for a yes or no. */
+  async function authorize(list: DT[]) {
+    const ids = new Set(list.map((d) => d.dt_id));
+    const pend = m.pendingAuth.filter((a) => ids.has(a.dt_id));
+    if (!pend.length) return toast.message("Nothing to authorize there");
+    setBulkBusy(true);
+    try {
+      await patchMany("allocations", pend.map((a) => ({ id: a.id, patch: { authorized: true } })));
+      // captures flagged only for being self-assigned are fine now
+      const who = new Set(pend.map((a) => `${a.dt_id}|${(m.enumById.get(a.enumerator_id)?.username ?? "").trim().toLowerCase()}`));
+      const clear = m.capture_issues.filter((i) => i.reason === SELF_ASSIGNED_REASON && who.has(`${i.dt_id}|${(i.username ?? "").trim().toLowerCase()}`)).map((i) => i.id);
+      if (clear.length) await removeMany("capture_issues", clear);
+    } catch (e: any) { setBulkBusy(false); return toast.error(e.message); }
+    setSel(new Set());
+    setBulkBusy(false);
+    toast.success(`${pend.length} self-assigned allocation${pend.length > 1 ? "s" : ""} authorized`);
+    refresh();
+  }
+
+  async function rejectSelf(d: DT) {
+    const pend = m.pendingAuth.filter((a) => a.dt_id === d.dt_id);
+    if (!pend.length) return;
+    setBulkBusy(true);
+    try {
+      await patchMany("allocations", pend.map((a) => ({ id: a.id, patch: { status: "cancelled", authorized: false } })));
+      const left = activeAllocs(m, d.dt_id).filter((a) => !pend.some((p) => p.id === a.id));
+      if (!left.length) await updateRow("dts", d.id, { status: "unassigned", updated_at: new Date().toISOString() });
+      const who = new Set(pend.map((a) => (m.enumById.get(a.enumerator_id)?.username ?? "").trim().toLowerCase()));
+      const flagged = m.capture_issues.filter((i) => i.reason === SELF_ASSIGNED_REASON && i.dt_id === d.dt_id && who.has((i.username ?? "").trim().toLowerCase()));
+      // Only admins may edit flagged captures; for anyone else the allocation change above still stands.
+      if (flagged.length) await patchMany("capture_issues", flagged.map((i) => ({ id: i.id, patch: { reason: "DT not allocated to anyone" } }))).catch(() => 0);
+    } catch (e: any) { setBulkBusy(false); return toast.error(e.message); }
+    setBulkBusy(false);
+    toast.success("Self-assignment rejected. The DT is back to not assigned and the captures stay flagged.");
+    refresh();
+  }
+
+  const askReject = (d: DT) =>
+    ask({
+      title: "Reject this self-assignment?",
+      danger: true,
+      body: <p>The self-assigned allocation on <b>{d.dt_name || d.dt_id}</b> is cancelled and the DT goes back to <b>Not assigned</b>. The captures stay on record and flagged.</p>,
+      confirmLabel: "Yes, reject",
+      onConfirm: () => rejectSelf(d),
+    });
+
+  const authControls = (d: DT) => {
+    if (!m.pendingAuth.some((a) => a.dt_id === d.dt_id)) return null;
+    return (
+      <div className="mt-1 flex flex-wrap items-center gap-1">
+        <span className="rounded bg-warning/25 px-1.5 py-0.5 text-[10px] font-bold uppercase">Self-assigned · needs authorization</span>
+        <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={bulkBusy} onClick={() => void authorize([d])}>Authorize</Button>
+        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive" disabled={bulkBusy} onClick={() => askReject(d)}>Reject</Button>
+      </div>
+    );
+  };
 
   const statusSelect = (d: DT) => (
     <select
@@ -236,7 +295,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
             </select>
             <Input className="w-full sm:w-56" placeholder="Search DT name or ID" value={q} onChange={(e) => setQ(e.target.value)} />
             <div className="inline-flex overflow-hidden rounded-md border text-sm font-bold" role="group" aria-label="Assigned or not assigned">
-              {([["all", "All", stats.total], ["assigned", "Assigned", stats.assigned], ["pending", "Not assigned", stats.unassigned]] as const).map(([v, label, n]) => (
+              {([["all", "All", stats.total], ["assigned", "Assigned", stats.assigned], ["pending", "Not assigned", stats.unassigned], ...(needAuthCount ? [["needsauth", "Needs authorization", needAuthCount] as const] : [])] as const).map(([v, label, n]) => (
                 <button key={v} type="button" onClick={() => setStatusF(v)} className={"px-3 py-1.5 " + (statusF === v ? "bg-foreground text-background" : "hover:bg-muted")}>{label} <span className="opacity-70">{n}</span></button>
               ))}
             </div>
@@ -257,6 +316,9 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
           <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 shadow">
             <span className="text-sm font-bold">{selected.length} DT{selected.length > 1 ? "s" : ""} selected</span>
             <Button size="sm" disabled={bulkBusy} onClick={() => askBulkComplete(selected)}>{bulkBusy ? "Saving…" : `✓ Mark ${selected.length} as complete`}</Button>
+            {selected.some((d) => m.pendingAuth.some((a) => a.dt_id === d.dt_id)) && (
+              <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void authorize(selected)}>Authorize self-assigned ({selected.filter((d) => m.pendingAuth.some((a) => a.dt_id === d.dt_id)).length})</Button>
+            )}
             <Button size="sm" variant="outline" onClick={() => setSel(new Set(rows.map((d) => d.dt_id)))}>Select all {rows.length} shown</Button>
             <Button size="sm" variant="ghost" onClick={() => setSel(new Set())}>Clear</Button>
           </div>
@@ -275,6 +337,8 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
                   <div className="min-w-0 flex-1">
                     <div className={"truncate font-extrabold " + (d.status === "unassigned" ? "text-destructive" : d.status === "assigned" ? "text-success" : "")}>{d.dt_name || "(no name)"}</div>
                     <div className="text-xs text-muted-foreground">{d.dt_id} · {d.dt_type}{isPrivateDt(d) ? " · private" : ""}</div>
+                    <CapturerChips caps={m.capturersByDt.get(d.dt_id) ?? []} />
+                    {authControls(d)}
                   </div>
                   {statusSelect(d)}
                 </div>
@@ -313,6 +377,8 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
                       <div className={"font-extrabold " + (d.status === "unassigned" ? "text-destructive" : d.status === "assigned" ? "text-success" : "")}>{d.dt_name || "(no name)"}</div>
                       <div className="text-xs text-muted-foreground">{d.dt_id} · {d.dt_type}</div>
                       {d.status_note && <div className="text-xs italic text-warning-foreground">{d.status_note}</div>}
+                      <CapturerChips caps={m.capturersByDt.get(d.dt_id) ?? []} />
+                      {authControls(d)}
                     </td>
                     <td>{statusSelect(d)}</td>
                     <td className="text-xs">
@@ -512,5 +578,34 @@ function StatusDialog({ dt, onClose }: { dt: DT; onClose: () => void }) {
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save}>Update</Button></DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Everyone who captured on this DT, kept even after they leave the project. Each kind looks different on purpose. */
+function CapturerChips({ caps }: { caps: Capturer[] }) {
+  if (!caps.length) return null;
+  const cls = (c: Capturer) =>
+    c.selfAssigned ? "border-warning bg-warning/20"
+    : c.kind === "supervisor" ? "border-primary text-primary"
+    : c.kind === "left" ? "border-dashed border-muted-foreground/60 text-muted-foreground"
+    : c.kind === "unknown" ? "border-destructive text-destructive"
+    : "border-border bg-muted";
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1" aria-label="Captured by">
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Captured by</span>
+      {caps.map((c) => (
+        <span
+          key={c.username}
+          data-kind={c.kind}
+          title={[c.sources.join(" + "), c.first && `first ${c.first.slice(0, 10)}`, c.last && `last ${c.last.slice(0, 10)}`].filter(Boolean).join(" · ")}
+          className={"inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] " + cls(c)}
+        >
+          <span className={c.kind === "left" ? "line-through" : ""}>{c.username}</span>
+          {c.count > 0 && <span className="font-bold">×{c.count}</span>}
+          {c.label && <span className="font-bold">· {c.label}</span>}
+          {c.selfAssigned && <span className="font-bold">· self-assigned</span>}
+        </span>
+      ))}
+    </div>
   );
 }
