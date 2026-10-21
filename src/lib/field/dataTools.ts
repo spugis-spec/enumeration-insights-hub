@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { addRow, clearCollection, deleteWhere, listWhere, nullField, removeRow, setMany, listAll, type Progress } from "./db";
+import { addRow, clearCollection, deleteWhere, listWhere, nullField, removeMany, removeRow, setMany, listAll, type Progress } from "./db";
 import { currentUser } from "./firebase";
 import type { Model } from "./data";
 
@@ -57,11 +57,23 @@ export function downloadStaff(m: Model) {
 
 /** Captures are stored rolled up (one row per enumerator, DT and day), so the download is the same summary. */
 export function downloadCaptures(m: Model) {
-  const rows = m.submissions.map((s) => ({
+  const rows = [...m.submissions, ...m.ltSubmissions].map((s) => ({
+    type: s.source === "ltpole" ? "LT pole" : "customer",
     username: s.username ?? "", feeder: s.feeder_id ?? "", dt_id: s.dt_id ?? "", date: s.day ?? (s.captured_at ?? "").slice(0, 10),
     captures: s.count, last_capture_time: s.captured_at ?? "",
   }));
-  downloadSheet("enumeration_captures_summary", rows, ["username", "feeder", "dt_id", "date", "captures", "last_capture_time"]);
+  downloadSheet("enumeration_captures_summary", rows, ["type", "username", "feeder", "dt_id", "date", "captures", "last_capture_time"]);
+  return rows.length;
+}
+
+/** The flagged captures with the fields needed to find each one again: FID, DT, feeder, building code, structure_ and customer no. */
+export function downloadFlagged(m: Model) {
+  const rows = m.capture_issues.map((i) => ({
+    FID: i.fid ?? "", DT_ID: i.dt_id ?? "", FEEDER_ID: i.feeder_id ?? "", BUILDING_CODE: i.building_code ?? "", STRUCTURE_: i.structure ?? "",
+    CUSTOMER_NO: i.customer_no ?? "", CALL_BACK_FORM_NO: i.call_back_form_no ?? "", USERNAME: i.username ?? "",
+    TYPE: i.source === "ltpole" ? "LT pole" : "Customer", PROBLEM: i.reason, DATE: (i.captured_at ?? "").slice(0, 10),
+  }));
+  downloadSheet("flagged_captures", rows, ["FID", "DT_ID", "FEEDER_ID", "BUILDING_CODE", "STRUCTURE_", "CUSTOMER_NO", "CALL_BACK_FORM_NO", "USERNAME", "TYPE", "PROBLEM", "DATE"]);
   return rows.length;
 }
 
@@ -72,7 +84,7 @@ export function downloadPoints(m: Model) {
 }
 
 function collect(m: Model) {
-  return { feeders: m.feeders, dts: m.dts, enumerators: m.enumerators, allocations: m.allocations, submissions: m.submissions, vehicles: m.vehicles, trips: m.trips } as Record<string, any[]>;
+  return { feeders: m.feeders, dts: m.dts, enumerators: m.enumerators, allocations: m.allocations, submissions: [...m.submissions, ...m.ltSubmissions], vehicles: m.vehicles, trips: m.trips } as Record<string, any[]>;
 }
 
 export function downloadFullBackup(m: Model) {
@@ -150,6 +162,14 @@ const wipe = (col: string, p?: Prog) => clearCollection(col, (d, t) => p?.(`Dele
 
 export async function clearLookup(p?: Prog) { return (await wipe("dts", p)) + (await wipe("feeders", p)); }
 export const clearStaff = (p?: Prog) => wipe("enumerators", p);
+/** Removes only the LT pole captures (and their flagged rows), leaving customer captures alone. */
+export async function clearLtPoles(_p?: Prog) {
+  const subs = await listWhere<{ id: string }>("submissions", "source", "ltpole");
+  const iss = await listWhere<{ id: string }>("capture_issues", "source", "ltpole");
+  await removeMany("submissions", subs.map((x) => x.id));
+  await removeMany("capture_issues", iss.map((x) => x.id));
+  return subs.length + iss.length;
+}
 export const clearCaptures = async (p?: Prog) => (await wipe("submissions", p)) + (await wipe("capture_issues", p));
 export const clearPoints = (_p?: Prog) => nullField("feeders", "est_customer_points");
 export async function clearCollections(cols: readonly string[], p?: Prog) { let n = 0; for (const c of cols) n += await wipe(c, p); return n; }

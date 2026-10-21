@@ -21,3 +21,5 @@
 - Values shared between the legacy dashboard iframe and React pages (daily target, projection buffer, current dashboard date) live in same-origin localStorage via `src/lib/shared.ts`; the daily target is also mirrored to RTDB `settings/dailyTarget`.
 - The legacy dashboard spools compact GIS points per dashboard date into IndexedDB (`eih-gis`) and, on cloud save, RTDB `gisPoints/{date}` + `gisPointsIndex`; the map reads them via `src/lib/gisSpool.ts` so raw files need not be re-uploaded.
 - Enumerator WhatsApp numbers are stored separately at RTDB `enumeratorPhones/{username}` so the existing `mappings` structure stays unchanged.
+
+- Merge Feeders tool: `public/legacy/merge-feeders/` (mf.js, mf.css, vendored JSZip/PapaParse), opened from the button in the Dashboard's Upload Data Files card (`toggleMergeTool()` in `public/legacy/index.html`). It attaches files by feeding `handleFileUpload(input, type)`, so Dashboard upload logic stays untouched.

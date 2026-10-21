@@ -109,7 +109,7 @@ function Dashboard() {
             {activeTab === "alerts" && <AlertsTab m={m} goTo={setTab} />}
             {activeTab === "projections" && <ProjectionsTab m={m} isAdmin={isAdmin} />}
             {activeTab === "vehicles" && <VehiclesTab m={m} isAdmin={isAdmin} />}
-            {activeTab === "uploads" && isAdmin && <UploadsTab m={m} />}
+            {activeTab === "uploads" && isAdmin && <UploadsTab m={m} goTo={setTab} />}
             {activeTab === "users" && isAdmin && <UsersTab m={m} />}
           </>
         )}

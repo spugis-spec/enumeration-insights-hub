@@ -6,11 +6,15 @@ import { addMany, patchMany, removeMany, updateRow, upsertMany, safeId } from "@
 import { auth } from "@/lib/field/firebase";
 import { captureIssueReason, useRefresh, type Model } from "@/lib/field/data";
 import { parseCaptureTime } from "@/lib/field/dates";
-import { fetchDashboardCustomerRows } from "@/lib/field/dashboardSync";
+import { fetchDashboardRows, type DashboardRows } from "@/lib/field/dashboardSync";
+import { getScope, inDateRange, scopeFeederIds, setScope, useScope } from "@/lib/field/scope";
+import { planSelfAssign } from "@/lib/field/fieldwork";
+import { DtWorkTable } from "./DtWorkTable";
 import {
   UPLOADED_COLLECTIONS,
   DATA_COLLECTIONS,
   clearCaptures,
+  clearLtPoles,
   clearCollections,
   clearLookup,
   clearPoints,
@@ -33,6 +37,7 @@ import {
   type SnapshotMeta,
 } from "@/lib/field/dataTools";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Section } from "./common";
 import { ConfirmDialog, type ConfirmReq } from "./ConfirmDialog";
 
@@ -95,17 +100,125 @@ function pickUser(row: Record<string, any>) {
 const compact = <T extends Record<string, any>>(o: T) =>
   Object.fromEntries(Object.entries(o).filter(([, v]) => v != null)) as T;
 
-export function UploadsTab({ m }: { m: Model }) {
+/** The DT ID on a capture row: a DT_ID / DT ID / DSS ID column, otherwise the first filled column starting with dss_ (LT pole files carry it as the DSS ID). */
+function rowDt(r: Record<string, any>): string | null {
+  let dt = pick(r, "DT_ID", "DT ID", "DTID", "DSS_ID", "DSS ID", "DSSID");
+  if (!dt) {
+    const keys = Object.keys(r).filter((k) => k.toLowerCase().startsWith("dss_"));
+    keys.sort((a, b) => Number(b.toLowerCase().startsWith("dss_fdr")) - Number(a.toLowerCase().startsWith("dss_fdr")));
+    for (const k of keys) {
+      const v = r[k];
+      if (v != null && String(v).trim()) { dt = String(v).trim(); break; }
+    }
+  }
+  return dt ? dt.replace(/\.0+$/, "") : null;
+}
+const rowFeeder = (r: Record<string, any>) => pick(r, "feeder", "FEEDER_ID", "FEEDER ID");
+
+type CaptureType = "customer" | "ltpole";
+const TYPE_LABEL: Record<CaptureType, string> = { customer: "customer enumeration", ltpole: "LT pole" };
+type CheckReport = {
+  label: string; type: CaptureType; rows: number; inScope: number; ignoredFeeders: [string, number][]; ignoredDate: number;
+  flagged: [string, number][]; dtIds: string[]; from: string | null; to: string | null;
+};
+
+/** What a file holds before anything is saved: which feeders and which dates, and which of those are in the lookup. */
+function scanRows(rows: Record<string, string | null>[], m: Model) {
+  const feeders = new Map<string, number>();
+  let from: string | null = null, to: string | null = null;
+  for (const r of rows) {
+    const dt = rowDt(r);
+    const f = rowFeeder(r) ?? (dt ? m.dtById.get(dt)?.feeder_id : null) ?? "(no feeder)";
+    feeders.set(f, (feeders.get(f) ?? 0) + 1);
+    const at = parseCaptureTime(pickTime(r));
+    const day = at?.slice(0, 10);
+    if (day) { if (!from || day < from) from = day; if (!to || day > to) to = day; }
+  }
+  return { feeders: [...feeders.entries()].sort((a, b) => b[1] - a[1]), from, to };
+}
+
+/** Pick the feeders being worked on and, optionally, the dates. Everything uploaded for any other feeder is ignored. */
+function ScopePanel({ m, compact = false }: { m: Model; compact?: boolean }) {
+  const scope = useScope();
+  const [q, setQ] = useState("");
+  const ids = m.feeders.map((f) => f.feeder_id);
+  const active = scopeFeederIds(scope, ids);
+  const toggle = (id: string) => {
+    const next = scope.feeders === null ? new Set([id]) : new Set(scope.feeders.filter((f) => ids.includes(f)));
+    if (scope.feeders !== null) { if (next.has(id)) next.delete(id); else next.add(id); }
+    setScope({ feeders: next.size === 0 || next.size === ids.length ? null : [...next] });
+  };
+  const list = m.feeders.filter((f) => !q || `${f.feeder_name} ${f.feeder_id}`.toLowerCase().includes(q.toLowerCase()));
+  if (!ids.length) return <p className="text-sm text-destructive">Upload the Feeder &amp; DT lookup first. Only the feeders in it are worked on.</p>;
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <b>{scope.feeders === null ? `All ${ids.length} feeders in the lookup` : `${active.size} of ${ids.length} feeders`}</b>
+        <Button size="sm" variant="outline" onClick={() => setScope({ feeders: null })} disabled={scope.feeders === null}>Use all</Button>
+        <Input className="ml-auto w-48" placeholder="Find a feeder" value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
+      <div className={"flex flex-wrap gap-1 overflow-auto " + (compact ? "max-h-28" : "max-h-40")}>
+        {list.map((f) => {
+          const on = active.has(f.feeder_id) && scope.feeders !== null;
+          return (
+            <button key={f.feeder_id} onClick={() => toggle(f.feeder_id)} title={f.feeder_id}
+              className={"rounded-full border px-2.5 py-1 text-xs font-bold " + (on ? "bg-foreground text-background" : scope.feeders === null ? "bg-muted" : "opacity-60 hover:opacity-100")}>
+              {f.feeder_name} <span className="font-normal opacity-70">{f.feeder_id}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-bold">Dates</span>
+        <Input type="date" className="w-40" value={scope.from} onChange={(e) => setScope({ from: e.target.value })} />
+        <span>to</span>
+        <Input type="date" className="w-40" value={scope.to} onChange={(e) => setScope({ to: e.target.value })} />
+        <Button size="sm" variant="ghost" disabled={!scope.from && !scope.to} onClick={() => setScope({ from: "", to: "" })}>All dates</Button>
+      </div>
+    </div>
+  );
+}
+
+/** Shown in the confirm box for the Dashboard check: what the saved data holds, and the same scope controls. */
+function DashboardCheckBody({ m, got }: { m: Model; got: DashboardRows }) {
+  const scope = useScope();
+  const scans = (["customer", "ltpole"] as CaptureType[]).map((t) => ({ t, rows: got[t], scan: scanRows(got[t], m) })).filter((x) => x.rows.length);
+  const lookup = new Set(m.feeders.map((f) => f.feeder_id));
+  const focus = scopeFeederIds(scope, [...lookup]);
+  return (
+    <>
+      {scans.map(({ t, rows, scan }) => (
+        <div key={t} className="rounded-md border p-2">
+          <div className="font-bold">{rows.length.toLocaleString()} {TYPE_LABEL[t]} rows{scan.from ? ` · ${scan.from === scan.to ? scan.from : `${scan.from} → ${scan.to}`}` : ""}</div>
+          <div className="mt-1 flex flex-wrap gap-1 text-xs">
+            {scan.feeders.slice(0, 24).map(([f, n]) => {
+              const inLookup = lookup.has(f);
+              const used = inLookup && focus.has(f);
+              return <span key={f} className={"rounded border px-1.5 py-0.5 " + (used ? "border-success bg-success/15 font-bold" : "text-muted-foreground line-through")}>{m.feederById.get(f)?.feeder_name ?? f} · {n.toLocaleString()}{!inLookup ? " (not in lookup)" : ""}</span>;
+            })}
+          </div>
+        </div>
+      ))}
+      <p className="text-xs text-muted-foreground">Feeders in green are checked. Rows on any other feeder are ignored, except where a DT from your feeders was captured under a wrong feeder, which is flagged.</p>
+      <ScopePanel m={m} compact />
+    </>
+  );
+}
+
+export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void }) {
   const refresh = useRefresh();
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmReq, setConfirmReq] = useState<ConfirmReq | null>(null);
   const KINDS: Record<string, string> = {
     lookup: "Feeder & DT lookup",
     staff: "Enumerators",
-    captures: "Captures",
+    captures: "Customer captures",
+    ltpole: "LT pole captures",
     points: "Customer points",
   };
   const totalCaptures = m.submissions.reduce((n, x) => n + x.count, 0);
+  const totalPoles = m.ltSubmissions.reduce((n, x) => n + x.count, 0);
+  const [reports, setReports] = useState<CheckReport[]>([]);
   const [snaps, setSnaps] = useState<SnapshotMeta[] | null>(null);
   const [snapErr, setSnapErr] = useState<string | null>(null);
   const [uploads, setUploads] = useState<UploadLog[]>([]);
@@ -155,9 +268,9 @@ export function UploadsTab({ m }: { m: Model }) {
   const TITLES: Record<string, string> = {
     lookup: "Uploading feeder & DT lookup",
     staff: "Uploading enumerator list",
-    enum: "Uploading enumeration captures",
+    enum: "Checking uploaded captures",
     points: "Uploading customer points",
-    baseline: "Assigning DTs",
+    baseline: "Assigning DTs found in the upload",
     restore: "Restoring data",
     "clear-lookup": "Clearing feeder & DT lookup",
     "clear-staff": "Clearing enumerators",
@@ -337,175 +450,70 @@ export function UploadsTab({ m }: { m: Model }) {
       `Before lookup upload (${file.name})`,
     );
 
-  /** After a captures upload: offer to mark DTs that already have work as assigned to the enumerators who captured them. */
-  function offerBaseline(out: any[]) {
-    const lockedIds = new Set(m.feeders.filter((f) => f.locked).map((f) => f.feeder_id));
-    const byDt = new Map<string, { users: Set<string>; first: string | null }>();
-    const unknownUsers = new Map<string, number>();
-    let notInLookup = 0;
-    for (const o of out) {
-      if (!o.dt_id || !o.username) continue;
-      const dt = m.dtById.get(o.dt_id);
-      if (!dt) {
-        notInLookup++;
-        continue;
-      }
-      if (lockedIds.has(dt.feeder_id)) continue; // locked feeders are flagged in Capture Alerts, not auto-assigned
-      if ((m.allocsByDt.get(dt.dt_id) ?? []).some((a) => a.status === "active")) continue; // never override a manual allocation
-      const en = m.enumByUser.get(String(o.username).trim().toLowerCase());
-      if (!en) {
-        unknownUsers.set(o.username, (unknownUsers.get(o.username) ?? 0) + 1);
-        continue;
-      }
-      const cur = byDt.get(dt.dt_id) ?? { users: new Set<string>(), first: null };
-      cur.users.add(en.id);
-      if (o.captured_at && (!cur.first || o.captured_at < cur.first)) cur.first = o.captured_at;
-      byDt.set(dt.dt_id, cur);
-    }
-    if (!byDt.size) return;
-    const feederIds = new Set([...byDt.keys()].map((id) => m.dtById.get(id)!.feeder_id));
-    const people = new Set([...byDt.values()].flatMap((v) => [...v.users]));
-    const apply = (lock: boolean) =>
-      run(
-        "baseline",
-        async (p) => {
-          const uid = auth().currentUser?.uid ?? null;
-          const today = new Date().toISOString().slice(0, 10);
-          const allocs: any[] = [];
-          const dtPatches: { id: string; patch: Record<string, any> }[] = [];
-          for (const [dtId, v] of byDt) {
-            const dt = m.dtById.get(dtId)!;
-            for (const eid of v.users)
-              allocs.push({
-                dt_id: dtId,
-                enumerator_id: eid,
-                allocated_on: v.first?.slice(0, 10) ?? today,
-                due_date: null,
-                notes: "Auto-assigned from uploaded captures",
-                allocated_by: uid,
-                status: "active",
-                completed_on: null,
-              });
-            if (dt.status === "unassigned")
-              dtPatches.push({
-                id: dt.id,
-                patch: {
-                  status: "assigned",
-                  status_note: null,
-                  updated_at: new Date().toISOString(),
-                },
-              });
-          }
-          await addMany("allocations", allocs, (d, t) => p("Creating allocations", d, t));
-          await patchMany("dts", dtPatches);
-          if (lock)
-            await patchMany(
-              "feeders",
-              [...feederIds].map((f) => ({ id: m.feederById.get(f)!.id, patch: { locked: true } })),
-            );
-          return `Marked ${byDt.size} DTs as assigned${lock ? ` and locked ${feederIds.size} feeder(s)` : ""}`;
-        },
-        "Before auto-assigning from captures",
-      );
-    const unk = [...unknownUsers.entries()];
-    ask({
-      title: "Mark these DTs as assigned?",
-      body: (
-        <>
-          <p>
-            The captures you just uploaded show work already done on <b>{byDt.size} DTs</b> (
-            {feederIds.size} feeder{feederIds.size > 1 ? "s" : ""}) by{" "}
-            <b>
-              {people.size} enumerator{people.size > 1 ? "s" : ""}
-            </b>
-            , and none of them are allocated yet.
-          </p>
-          <p>
-            Choose <b>Mark as assigned</b> to allocate each DT to the enumerator(s) who captured it,
-            so supervisors can then assign the remaining DTs.
-          </p>
-          <p>
-            <b>Assign and lock feeders</b> does the same and also locks those feeders, so any later
-            capture on an unallocated DT is flagged.
-          </p>
-          {unk.length > 0 && (
-            <p className="text-destructive">
-              Skipped: {unk.reduce((s, [, n]) => s + n, 0)} capture(s) by usernames not on the staff
-              list (
-              {unk
-                .slice(0, 5)
-                .map(([u]) => u)
-                .join(", ")}
-              {unk.length > 5 ? "…" : ""}).
-            </p>
-          )}
-          {notInLookup > 0 && (
-            <p className="text-destructive">
-              Skipped: {notInLookup} capture(s) on DT IDs not in the lookup.
-            </p>
-          )}
-          <p className="text-muted-foreground">
-            DTs already allocated, and DTs on locked feeders, are left alone. A restore point is
-            saved first.
-          </p>
-        </>
-      ),
-      confirmLabel: "Mark as assigned",
-      cancelLabel: "No, leave them",
-      alt: { label: "Assign and lock feeders", onClick: () => apply(true) },
-      onConfirm: () => apply(false),
+  /**
+   * After a check: every DT on your feeders that has captures but nobody assigned on the app is assigned to the staff who
+   * captured it and flagged "self-assigned" until a supervisor authorises it. Its status becomes Assigned, ready for
+   * Completed etc. Every username that worked on a DT is saved on it, including supervisors and people who have left.
+   * DTs already allocated are never changed, and locked feeders are only flagged.
+   */
+  const autoAssign = async (groups: any[]) => {
+    const plan = planSelfAssign(m, groups, auth().currentUser?.uid ?? null);
+    if (!plan.allocs.length && !plan.dtPatches.length) return;
+    await run("baseline", async (p) => {
+      if (plan.allocs.length) await addMany("allocations", plan.allocs, (d, t) => p("Assigning DTs to the staff who captured them", d, t));
+      await patchMany("dts", plan.dtPatches);
+      const bits = [
+        `${plan.selfDts.length} DT${plan.selfDts.length === 1 ? "" : "s"} self-assigned (not assigned on the app, awaiting authorisation)`,
+        plan.lockedSkipped.length && `${plan.lockedSkipped.length} on locked feeders only flagged`,
+      ].filter(Boolean);
+      return bits.join(" · ") || "Saved who worked on each DT";
     });
-  }
+  };
 
   /** Asks whether to keep a restore point before the captures upload changes anything. */
-  const askRestore = (file: File, legacyIds: string[]) => {
-    if (!hasData) return void doCaptures(file, legacyIds, false);
+  const askRestore = (file: File, legacyIds: string[], type: CaptureType) => {
+    const go = (keep: boolean) => void doCaptures(file, legacyIds, keep, undefined, type).then((g) => g && autoAssign(g));
+    if (!hasData) return go(false);
     ask({
       title: "Keep a restore point?",
       body: (
         <>
-          <p>
-            A restore point lets you undo this upload later, but it uses extra space on the database.
-          </p>
-          <p>
-            Only the counts per feeder / DT and the captures with a problem are saved. All other rows in
-            the file are discarded after checking.
-          </p>
+          <p>A restore point lets you undo this upload later, but it uses extra space on the database.</p>
+          <p>Only the counts per feeder / DT and the captures with a problem are saved. All other rows in the file are discarded after checking.</p>
         </>
       ),
       confirmLabel: "Yes, keep restore point",
-      alt: { label: "No, skip it", onClick: () => doCaptures(file, legacyIds, false) },
-      onConfirm: () => doCaptures(file, legacyIds, true),
+      alt: { label: "No, skip it", onClick: () => go(false) },
+      onConfirm: () => go(true),
     });
   };
 
   const enumeration = (file: File) => {
     const legacy = m.submissions.filter((x) => x.day == null);
-    if (!legacy.length) return void askRestore(file, []);
+    if (!legacy.length) return void askRestore(file, [], "customer");
     ask({
       title: "Replace old-format captures?",
       body: (
         <>
-          <p>
-            Captures are now saved rolled up per enumerator, DT and day, so large files load quickly
-            instead of saving one record per capture.
-          </p>
-          <p>
-            <b>{legacy.length.toLocaleString()}</b> old per-capture records are still saved. They
-            will be deleted when this file is imported, so nothing is counted twice.
-          </p>
+          <p>Captures are now saved rolled up per enumerator, DT and day, so large files load quickly instead of saving one record per capture.</p>
+          <p><b>{legacy.length.toLocaleString()}</b> old per-capture records are still saved. They will be deleted when this file is imported, so nothing is counted twice.</p>
         </>
       ),
       confirmLabel: "Continue with upload",
-      onConfirm: () =>
-        askRestore(
-          file,
-          legacy.map((l) => l.id),
-        ),
+      onConfirm: () => askRestore(file, legacy.map((l) => l.id), "customer"),
     });
   };
+  const ltPole = (file: File) => askRestore(file, [], "ltpole");
 
-  const doCaptures = async (file: File | null, legacyIds: string[], keepRestore: boolean, source?: { rows: Record<string, string | null>[]; label: string }) => {
+  /**
+   * Checks one file (customer enumeration or LT pole). Only rows for the feeders chosen in Check scope (default: every feeder in the
+   * lookup) are used; rows for any other feeder are ignored and counted. A DT from your feeders captured under the wrong feeder is flagged.
+   * Returns the capture groups so the caller can assign DTs once every file is checked.
+   */
+  const doCaptures = async (
+    file: File | null, legacyIds: string[], keepRestore: boolean,
+    source?: { rows: Record<string, string | null>[]; label: string }, type: CaptureType = "customer",
+  ): Promise<any[] | null> => {
     let groupsOut: any[] | null = null;
     const label = source?.label ?? file!.name;
     await run(
@@ -514,78 +522,84 @@ export function UploadsTab({ m }: { m: Model }) {
         p("Reading file…", 0, 0);
         const rows = source ? source.rows : await readSheet(file!);
         p(`Processing ${rows.length.toLocaleString()} rows…`, 0, 0);
+        const lookupIds = m.feeders.map((f) => f.feeder_id);
+        if (!lookupIds.length) throw new Error("Upload the Feeder & DT lookup first. Only the feeders in it are worked on.");
+        const sc = getScope();
+        const focus = scopeFeederIds(sc, lookupIds);
+        if (!focus.size) throw new Error("None of the feeders chosen in Check scope are in the lookup. Choose feeders again.");
         const headers = rows[0] ? Object.keys(rows[0]) : [];
         const groups = new Map<string, any>();
         const issues = new Map<string, any>();
-        let rowsRead = 0,
-          withDt = 0,
-          dayMin: string | null = null,
-          dayMax: string | null = null;
+        const perKey = new Map<string, number>();
+        const flagged = new Map<string, number>();
+        const ignoredFeeders = new Map<string, number>();
+        let rowsRead = 0, inScope = 0, ignoredDate = 0, withDt = 0;
+        let dayMin: string | null = null, dayMax: string | null = null;
+        let foundMin: string | null = null, foundMax: string | null = null;
 
         for (const r of rows) {
           const username = pickUser(r);
-          const feeder = pick(r, "feeder", "FEEDER_ID", "FEEDER ID");
-          // DT ID: a column called DT_ID / DT ID, otherwise the first filled column starting with dss_
-          let dt = pick(r, "DT_ID", "DT ID", "DTID");
-          if (!dt) {
-            const keys = Object.keys(r).filter((k) => k.toLowerCase().startsWith("dss_"));
-            keys.sort(
-              (a, b) =>
-                Number(b.toLowerCase().startsWith("dss_fdr")) -
-                Number(a.toLowerCase().startsWith("dss_fdr")),
-            );
-            for (const k of keys) {
-              const v = r[k];
-              if (v != null && String(v).trim()) {
-                dt = String(v).trim();
-                break;
-              }
-            }
-          }
-          if (dt) dt = dt.replace(/\.0+$/, "");
+          const feeder = rowFeeder(r);
+          const dt = rowDt(r);
           if (!username && !feeder && !dt) continue; // blank row
           rowsRead++;
-          if (dt) withDt++;
           const at = parseCaptureTime(pickTime(r));
           const day = at ? at.slice(0, 10) : null;
+          if (day) {
+            if (!foundMin || day < foundMin) foundMin = day;
+            if (!foundMax || day > foundMax) foundMax = day;
+          }
+          // Only the feeders being worked on: the row's own feeder, or the feeder its DT belongs to in the lookup.
+          const dtRec = dt ? m.dtById.get(dt) : undefined;
+          if (!((feeder && focus.has(feeder)) || (dtRec && focus.has(dtRec.feeder_id)))) {
+            const f = feeder ?? dtRec?.feeder_id ?? "(no feeder or DT in the lookup)";
+            ignoredFeeders.set(f, (ignoredFeeders.get(f) ?? 0) + 1);
+            continue;
+          }
+          if (!inDateRange(day, sc)) { ignoredDate++; continue; }
+          inScope++;
+          if (dt) withDt++;
           if (day) {
             if (!dayMin || day < dayMin) dayMin = day;
             if (!dayMax || day > dayMax) dayMax = day;
           }
           const id = [(username ?? "").toLowerCase(), feeder ?? "", dt ?? "", day ?? ""].join("|");
-          let g = groups.get(id);
-          if (!g)
-            groups.set(
-              id,
-              (g = {
-                id,
-                username,
-                feeder_id: feeder,
-                dt_id: dt,
-                day,
-                count: 0,
-                captured_at: null,
-                first_at: null,
-              }),
-            );
+          const gid = type === "ltpole" ? `lt|${id}` : id;
+          let g = groups.get(gid);
+          if (!g) groups.set(gid, (g = { id: gid, username, feeder_id: feeder, dt_id: dt, day, count: 0, captured_at: null, first_at: null, source: type }));
           g.count++;
-          // Keep the row only when something is wrong with it, with the fields staff need to find the submission again.
+          // Keep the row only when something is wrong with it, with the fields staff need to find it again.
           const reason = captureIssueReason(m, username, feeder, dt, day);
           if (reason) {
+            flagged.set(reason, (flagged.get(reason) ?? 0) + 1);
             const cb = pick(r, "call_back_form_no", "CALL BACK FORM NO", "CALLBACK_FORM_NO", "call_back_form_number");
             const cust = pick(r, "customer_no", "CUSTOMER NO", "CUSTOMER_NUMBER", "customer_number");
             const bld = pick(r, "building_code", "BUILDING CODE", "BUILDING_CODE");
-            const iid = [(username ?? "").toLowerCase(), dt ?? "", cb ?? "", cust ?? "", bld ?? "", at ?? "", cb || cust || bld || at ? "" : String(issues.size)].join("|");
-            issues.set(iid, { username, feeder_id: feeder, dt_id: dt, captured_at: at, reason, call_back_form_no: cb, customer_no: cust, building_code: bld, upload: label });
+            const fid = pick(r, "FID");
+            const structure = pick(r, "structure_", "structure", "structure_code", "structure_id");
+            const ck = `${(username ?? "").toLowerCase()}|${dt ?? ""}|${reason}`;
+            const seen = (perKey.get(ck) ?? 0) + 1;
+            perKey.set(ck, seen);
+            // At most 50 detailed rows per person, DT and problem; every row is still counted above.
+            if (seen <= 50) {
+              const iid = [type, (username ?? "").toLowerCase(), dt ?? "", fid ?? "", cb ?? "", cust ?? "", bld ?? "", structure ?? "", at ?? "", fid || cb || cust || bld || structure || at ? "" : String(issues.size)].join("|");
+              issues.set(iid, { username, feeder_id: feeder, dt_id: dt, captured_at: at, reason, call_back_form_no: cb, customer_no: cust, building_code: bld, fid, structure, source: type, upload: label });
+            }
           }
           if (at && (!g.captured_at || at > g.captured_at)) g.captured_at = at;
           if (at && (!g.first_at || at < g.first_at)) g.first_at = at;
         }
 
+        const ign = [...ignoredFeeders.entries()].sort((a, b) => b[1] - a[1]);
+        const ignTotal = ign.reduce((n, [, c]) => n + c, 0);
         if (!rowsRead) throw new Error("No capture rows found in that file.");
+        if (!inScope)
+          throw new Error(
+            `None of the ${rowsRead.toLocaleString()} rows are on the feeders you are working on.${ign.length ? ` The file has rows for: ${ign.slice(0, 6).map(([f, c]) => `${f} (${c})`).join(", ")}${ign.length > 6 ? "…" : ""}.` : ""}${ignoredDate ? ` ${ignoredDate.toLocaleString()} row(s) were outside the dates chosen.` : ""} Change the feeders or dates in Check scope.`,
+          );
         if (!withDt)
           throw new Error(
-            `No DT IDs found, so nothing was imported. Columns in your file: ${headers.slice(0, 14).join(", ")}${headers.length > 14 ? "…" : ""}. Add a column named DT_ID (or DT ID), or one starting with dss_.`,
+            `No DT IDs found, so nothing was imported. Columns in your file: ${headers.slice(0, 14).join(", ")}${headers.length > 14 ? "…" : ""}. Add a column named DT_ID (or DT ID / DSS_ID), or one starting with dss_.`,
           );
         const list = [...groups.values()];
         const sci = list.find((g) => g.dt_id && SCI.test(g.dt_id));
@@ -594,25 +608,13 @@ export function UploadsTab({ m }: { m: Model }) {
             `DT ID "${sci.dt_id}" is in scientific notation, so the real digits are lost and nothing was imported. Re-export the file with the DT ID column kept as text (or as ="501101202901") and upload again.`,
           );
 
-        if (legacyIds.length)
-          await removeMany("submissions", legacyIds, (d, t) =>
-            p("Removing old-format captures", d, t),
-          );
-        await upsertMany(
-          "submissions",
-          list,
-          (g) => g.id,
-          (d, t) => p("Saving captures", d, t),
-        );
+        if (legacyIds.length) await removeMany("submissions", legacyIds, (d, t) => p("Removing old-format captures", d, t));
+        await upsertMany("submissions", list, (g) => g.id, (d, t) => p("Saving captures", d, t));
         if (issues.size)
-          await upsertMany(
-            "capture_issues",
-            [...issues.entries()].map(([id, v]) => ({ ...v, _key: id })),
-            (g) => g._key,
-            (d, t) => p("Saving captures with problems", d, t),
-          );
+          await upsertMany("capture_issues", [...issues.entries()].map(([id, v]) => ({ ...v, _key: id })), (g) => g._key, (d, t) => p("Saving captures with problems", d, t));
+        const flaggedTotal = [...flagged.values()].reduce((n, c) => n + c, 0);
         await logUpload({
-          kind: "captures",
+          kind: type === "ltpole" ? "ltpole" : "captures",
           filename: label,
           rows_read: rowsRead,
           rows_with_dt: withDt,
@@ -622,30 +624,47 @@ export function UploadsTab({ m }: { m: Model }) {
           feeders: new Set(list.filter((g) => g.feeder_id).map((g) => g.feeder_id)).size,
           date_from: dayMin,
           date_to: dayMax,
-          note: issues.size ? `${issues.size} capture(s) with problems kept for correction` : null,
+          note: [flaggedTotal && `${flaggedTotal} flagged`, ignTotal && `${ignTotal} on other feeders ignored`, ignoredDate && `${ignoredDate} outside dates ignored`].filter(Boolean).join(" · ") || null,
         });
+        setReports((prev) => [
+          { label, type, rows: rowsRead, inScope, ignoredFeeders: ign, ignoredDate, flagged: [...flagged.entries()].sort((a, b) => b[1] - a[1]), dtIds: [...new Set(list.map((g) => g.dt_id).filter(Boolean))] as string[], from: foundMin, to: foundMax },
+          ...prev.filter((x) => x.type !== type),
+        ]);
         groupsOut = list.map((g) => ({ ...g, captured_at: g.first_at }));
-        return `Imported ${rowsRead.toLocaleString()} captures as ${list.length.toLocaleString()} summary rows (${withDt.toLocaleString()} with a DT ID). Re-uploading the same file updates, not duplicates. ${issues.size.toLocaleString()} capture(s) with problems kept for Capture Alerts; the rest were counted and discarded.`;
+        return `Checked ${inScope.toLocaleString()} ${TYPE_LABEL[type]} row${inScope === 1 ? "" : "s"} on your feeders, ${flaggedTotal.toLocaleString()} flagged${ignTotal ? ` · ${ignTotal.toLocaleString()} on other feeders ignored` : ""}${ignoredDate ? ` · ${ignoredDate.toLocaleString()} outside the dates ignored` : ""}. Re-uploading the same file updates, not duplicates.`;
       },
-      keepRestore ? `Before captures upload (${label})` : undefined,
+      keepRestore ? `Before ${TYPE_LABEL[type]} upload (${label})` : undefined,
     );
-    if (groupsOut) offerBaseline(groupsOut);
+    return groupsOut;
   };
 
   async function useDashboardUpload() {
     setBusy("dash");
     try {
-      const got = await fetchDashboardCustomerRows();
-      if (!got.rows.length) {
-        toast.error("The Dashboard has no Customer Enumeration rows saved in the cloud yet. Upload the file there under Upload Data Files > Customer Enumeration and click Save to Cloud.");
+      const got = await fetchDashboardRows();
+      if (!got.customer.length && !got.ltpole.length) {
+        toast.error("The Dashboard has no Customer Enumeration or LT Pole rows saved in the cloud yet. Upload the files there under Upload Data Files and click Save to Cloud.");
         return;
       }
       const when = got.savedAt ? new Date(got.savedAt).toLocaleString() : "unknown time";
       ask({
-        title: "Use the Dashboard's Customer Enumeration upload?",
-        body: <p>{got.rows.length.toLocaleString()} rows saved from the Dashboard ({when}). They are checked against your staff list and DT allocations, and any unauthorized captures are added to Capture Alerts. Running it again on the same data updates, not duplicates.</p>,
+        title: "Check the Dashboard's uploaded data?",
+        body: (
+          <>
+            <p>Saved from the Dashboard ({when}). Choose the feeders and dates to check below. Captures are matched to who is assigned on the app; anyone else is flagged and DTs nobody had assigned are assigned to the person who captured them, awaiting your authorisation.</p>
+            <DashboardCheckBody m={m} got={got} />
+          </>
+        ),
         confirmLabel: "Check and import",
-        onConfirm: () => void doCaptures(null, [], false, { rows: got.rows, label: `Dashboard upload (${when})` }),
+        onConfirm: async () => {
+          const all: any[] = [];
+          for (const [rows, type, name] of [[got.customer, "customer", "Dashboard customer enumeration"], [got.ltpole, "ltpole", "Dashboard LT pole"]] as const) {
+            if (!rows.length) continue;
+            const g = await doCaptures(null, [], false, { rows, label: `${name} (${when})` }, type);
+            if (g) all.push(...g);
+          }
+          if (all.length) await autoAssign(all);
+        },
       });
     } catch (e: any) {
       toast.error(e?.message ?? "Couldn't read the Dashboard upload");
@@ -790,11 +809,17 @@ export function UploadsTab({ m }: { m: Model }) {
     "clear-subs",
     "Clear all captures?",
     <p>
-      This deletes all <b>{totalCaptures.toLocaleString()}</b> uploaded captures (
-      {m.submissions.length.toLocaleString()} saved rows). Allocations stay.
+      This deletes all <b>{totalCaptures.toLocaleString()}</b> customer captures and <b>{totalPoles.toLocaleString()}</b> LT pole captures, and the flagged rows. Allocations stay.
     </p>,
     clearCaptures,
     "Before clearing captures",
+  );
+  const clearLtAsk = clearer(
+    "clear-subs",
+    "Clear LT pole captures?",
+    <p>This deletes the <b>{totalPoles.toLocaleString()}</b> LT pole captures and their flagged rows. Customer captures stay.</p>,
+    clearLtPoles,
+    "Before clearing LT poles",
   );
   const clearPointsAsk = clearer(
     "clear-points",
@@ -970,7 +995,7 @@ export function UploadsTab({ m }: { m: Model }) {
     </Section>
   );
 
-  const counts = `${m.feeders.length} feeders · ${m.dts.length} DTs · ${m.enumerators.length} enumerators · ${totalCaptures.toLocaleString()} captures · ${m.allocations.length} allocations · ${m.vehicles.length} vehicles · ${m.trips.length} trips`;
+  const counts = `${m.feeders.length} feeders · ${m.dts.length} DTs · ${m.enumerators.length} enumerators · ${totalCaptures.toLocaleString()} customer captures · ${totalPoles.toLocaleString()} LT pole captures · ${m.allocations.length} allocations · ${m.vehicles.length} vehicles · ${m.trips.length} trips`;
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -1031,6 +1056,14 @@ export function UploadsTab({ m }: { m: Model }) {
           </div>
         </div>
       )}
+      <div className="md:col-span-2">
+        <Section title="Check scope: feeders & dates being worked on">
+          <p className="mb-3 text-sm text-muted-foreground">
+            Only the feeders in the uploaded lookup are worked on, and you choose which of them are current. Every upload and every Dashboard check below ignores rows for any other feeder, and a DT from these feeders captured under a wrong feeder is flagged. Leave the dates empty to check every date in the file.
+          </p>
+          <ScopePanel m={m} />
+        </Section>
+      </div>
       {card(
         "lookup",
         "1. Feeder & DT lookup",
@@ -1059,26 +1092,33 @@ export function UploadsTab({ m }: { m: Model }) {
       )}
       {card(
         "enum",
-        "3. Enumeration captures",
+        "3. Customer enumeration",
         <>
-          The field export. Uses <b>username, feeder, time</b> and the DT ID from a column named{" "}
-          <b>DT_ID</b> / <b>DT ID</b> (or the first filled column starting with <b>dss_</b>). Large
-          files are saved rolled up per enumerator, DT and day, so they stay fast. Now:{" "}
-          {totalCaptures.toLocaleString()} captures ({m.submissions.length.toLocaleString()} saved
-          rows).
+          The field export. Uses <b>username, feeder, time</b> and the DT ID from a column named <b>DT_ID</b> / <b>DT ID</b> (or the first filled column starting with <b>dss_</b>). Also reads <b>FID, building_code, structure_, customer_no</b> when present, to return them for anything flagged. Now: {totalCaptures.toLocaleString()} customers ({m.submissions.length.toLocaleString()} saved rows).
         </>,
         enumeration,
         m.submissions.length,
         () => download(() => downloadCaptures(m), "captures"),
         clearCapturesAsk,
       )}
+      {card(
+        "ltpole",
+        "3a. LT Pole",
+        <>
+          Upload it with the customer file: both carry the DT ID (<b>DSS_ID / DT_ID</b>), so the same checks apply and the person who captured each pole is matched to who is assigned that DT. LT poles are kept apart and never counted as customers. Now: {totalPoles.toLocaleString()} LT pole captures.
+        </>,
+        ltPole,
+        m.ltSubmissions.length,
+        () => download(() => downloadCaptures(m), "captures"),
+        clearLtAsk,
+      )}
       <div className="md:col-span-2">
         <Section title="3b. Or use the Dashboard's upload">
           <p className="mb-3 text-sm text-muted-foreground">
-            No need to upload the same file twice. In the Dashboard, upload the file under <b>Upload Data Files &gt; Customer Enumeration</b> and click <b>Save to Cloud</b>, then press the button here. The rows are checked against the staff list and DT allocations, and unauthorized captures are stored in Capture Alerts.
+            No need to upload the same files twice. In the Dashboard, upload <b>Customer Enumeration</b> and <b>LT Pole</b> under <b>Upload Data Files</b> and click <b>Save to Cloud</b>, then press the button here. You pick the feeders and dates to check, only those feeders are worked on, and every DT found is listed below with who worked on it and whether it was assigned on the app.
           </p>
           <Button onClick={useDashboardUpload} disabled={!!busy}>
-            {busy === "dash" ? "Reading the Dashboard upload…" : "Use the Dashboard's Customer Enumeration upload"}
+            {busy === "dash" ? "Reading the Dashboard upload…" : "Check the Dashboard's Customer Enumeration + LT Pole upload"}
           </Button>
         </Section>
       </div>
@@ -1093,6 +1133,31 @@ export function UploadsTab({ m }: { m: Model }) {
         m.feeders.filter((f) => f.est_customer_points != null).length,
         () => download(() => downloadPoints(m), "feeders"),
         clearPointsAsk,
+      )}
+
+      {reports.length > 0 && (
+        <div className="md:col-span-2">
+          <Section title="Last check: DTs found" actions={goTo && <Button size="sm" variant="outline" onClick={() => goTo("alerts")}>Open Capture Alerts →</Button>}>
+            <div className="mb-3 grid gap-2 md:grid-cols-2">
+              {reports.map((r) => (
+                <div key={r.type} className="rounded-md border p-3 text-sm">
+                  <div className="font-bold">{TYPE_LABEL[r.type]} · {r.label}</div>
+                  <div className="text-muted-foreground">
+                    {r.inScope.toLocaleString()} of {r.rows.toLocaleString()} rows were on your feeders{r.from ? ` · dates in file ${r.from === r.to ? r.from : `${r.from} → ${r.to}`}` : ""}
+                  </div>
+                  {r.ignoredFeeders.length > 0 && (
+                    <div className="mt-1 text-xs"><b>Ignored (other feeders):</b> {r.ignoredFeeders.slice(0, 8).map(([f, n]) => `${f} (${n.toLocaleString()})`).join(", ")}{r.ignoredFeeders.length > 8 ? "…" : ""}</div>
+                  )}
+                  {r.ignoredDate > 0 && <div className="mt-1 text-xs"><b>Ignored (outside dates):</b> {r.ignoredDate.toLocaleString()}</div>}
+                  {r.flagged.length > 0 ? (
+                    <div className="mt-1 text-xs text-destructive"><b>Flagged:</b> {r.flagged.map(([why, n]) => `${why} (${n.toLocaleString()})`).join(" · ")}</div>
+                  ) : <div className="mt-1 text-xs text-success">Nothing flagged.</div>}
+                </div>
+              ))}
+            </div>
+            <DtWorkTable m={m} onlyDts={new Set(reports.flatMap((r) => r.dtIds))} defaultFilter="all" />
+          </Section>
+        </div>
       )}
 
       <div className="md:col-span-2">
