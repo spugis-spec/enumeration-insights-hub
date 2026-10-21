@@ -1,17 +1,21 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ClipboardCopy, MessageCircle, SearchCheck, Trash2, Undo2 } from "lucide-react";
+import { ClipboardCopy, Download, MessageCircle, SearchCheck, Trash2, Undo2 } from "lucide-react";
 import {
   activeAllocs, fmtDate, openDtsByEnumerator, STAFF_REASON, STAFF_RESPONSES, useOptimistic, useRefresh, waLink, WRONG_RESPONSES,
   type Alert, type CaptureIssue, type Model, type ResolvedAlert,
 } from "@/lib/field/data";
 import { removeMany, safeId, upsertMany } from "@/lib/field/db";
+import { downloadFlagged } from "@/lib/field/dataTools";
+import { buildDtWork } from "@/lib/field/fieldwork";
+import { scopeFeederIds, useScope } from "@/lib/field/scope";
+import { DtWorkTable } from "./DtWorkTable";
 import { auth } from "@/lib/field/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Section, selectCls, Stat } from "./common";
 
-type View = "wrong" | "staff" | "resolved";
+type View = "wrong" | "staff" | "resolved" | "work";
 type Item = { key: string; username: string; reason: string };
 
 const norm = (s: string) => s.trim().toLowerCase();
@@ -26,6 +30,8 @@ export function AlertsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void 
   const [bulk, setBulk] = useState("");
   const [busy, setBusy] = useState(false);
   const [showCheck, setShowCheck] = useState(false);
+  const scope = useScope();
+  const dtFlagged = useMemo(() => buildDtWork(m, scopeFeederIds(scope, m.feeders.map((f) => f.feeder_id)), scope).filter((r) => r.state !== "ok").length, [m, scope]);
 
   const total = m.submissions.reduce((n, s) => n + s.count, 0);
   const withDt = m.submissions.filter((s) => s.dt_id).reduce((n, s) => n + s.count, 0);
@@ -150,9 +156,10 @@ export function AlertsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void 
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <button className="text-left" onClick={() => switchView("wrong")}><Stat label="Wrong captures" value={wrongCaptures} tone="danger" sub={`${wrong.length} to review`} /></button>
         <button className="text-left" onClick={() => switchView("staff")}><Stat label="Not on staff list" value={staffUsers.length} tone="warning" sub={`usernames · ${staffCaptures} captures`} /></button>
+        <button className="text-left" onClick={() => switchView("work")}><Stat label="DTs to authorise / check" value={dtFlagged} tone="warning" sub="self-assigned, unassigned or wrong staff" /></button>
         <Stat label="Staff involved" value={involved} tone="warning" />
         <Stat label="Supervisor captures" value={m.supervisorCaptures} sub="not flagged" />
         <Stat label="Captures without DT" value={noDt} sub="no DT ID in the uploaded file" />
@@ -162,10 +169,20 @@ export function AlertsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void 
         <div className="mb-3 flex flex-wrap gap-2">
           {chip("wrong", "Wrong captures", wrong.length)}
           {chip("staff", "Not on staff list", staffUsers.length)}
+          {chip("work", "DT work log (who worked where)", dtFlagged)}
           {chip("resolved", "Resolved", m.resolvedAlerts.length)}
         </div>
 
-        {view !== "resolved" && (
+        {view === "work" && (
+          <>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Every DT on the feeders you are working on that has a capture, with everyone who worked on it, including supervisors and people who have left (shown dashed or labelled, never hidden). DTs captured without being assigned on the app were assigned to the capturer and wait here for you to authorise. On a team DT every member's work is shown, and a partner who never captured is flagged.
+            </p>
+            <DtWorkTable m={m} />
+          </>
+        )}
+
+        {view !== "resolved" && view !== "work" && (
           <>
             <p className="mb-3 text-sm text-muted-foreground">
               {view === "wrong"
@@ -198,7 +215,7 @@ export function AlertsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void 
                       return (
                         <tr key={a.key} className="border-t bg-destructive/5 align-top">
                           <td className="p-2"><input type="checkbox" checked={sel.has(a.key)} onChange={() => toggle(a.key)} /></td>
-                          <td className="p-2 font-bold">{a.enumerator?.full_name || a.username}<div className="text-xs font-normal text-muted-foreground">@{a.username}{a.enumerator?.supervisor ? ` · ${a.enumerator.supervisor}` : ""}</div></td>
+                          <td className="p-2 font-bold">{a.enumerator?.full_name || a.username}<div className="text-xs font-normal text-muted-foreground">@{a.username}{a.enumerator?.supervisor ? ` · ${a.enumerator.supervisor}` : ""}{a.source === "ltpole" && <span className="ml-1 rounded bg-accent/20 px-1 text-[10px] font-bold uppercase">LT pole</span>}</div></td>
                           <td className="text-xs">{mine.length ? mine.slice(0, 3).map((d) => <div key={d.dt_id}>{d.dt_name || d.dt_id} <span className="text-muted-foreground">· {m.feederById.get(d.feeder_id)?.feeder_name ?? d.feeder_id}</span></div>) : <span className="text-muted-foreground">no open DT</span>}</td>
                           <td>{a.dt?.dt_name ?? "?"}<div className="text-xs text-muted-foreground">{a.dt_id}{a.dt ? ` · ${m.feederById.get(a.dt.feeder_id)?.feeder_name ?? a.dt.feeder_id}` : ""}</div></td>
                           <td className="font-semibold text-destructive">{a.reason}{holders(a) && <div className="text-xs font-normal text-muted-foreground">DT holder: {holders(a)}</div>}</td>
@@ -286,9 +303,11 @@ export function AlertsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void 
 
 function issueLine(i: CaptureIssue, n: number) {
   const parts = [
+    i.fid && `FID: ${i.fid}`,
+    i.building_code && `Building code: ${i.building_code}`,
+    i.structure && `structure_: ${i.structure}`,
     i.call_back_form_no && `Call-back form: ${i.call_back_form_no}`,
     i.customer_no && `Customer no: ${i.customer_no}`,
-    i.building_code && `Building code: ${i.building_code}`,
   ].filter(Boolean);
   return `${n}. DT ${i.dt_id ?? "(none)"}${i.captured_at ? ` on ${fmtDate(i.captured_at)}` : ""} — ${i.reason}${parts.length ? `\n   ${parts.join(" · ")}` : ""}`;
 }
@@ -306,7 +325,7 @@ function CaptureCheck({ m }: { m: Model }) {
     }
     return [...g.entries()]
       .map(([user, items]) => ({ user, items: items.sort((a, b) => (a.captured_at ?? "").localeCompare(b.captured_at ?? "")), en: m.enumByUser.get(user) }))
-      .filter((x) => !q || `${x.user} ${x.en?.full_name ?? ""} ${x.items.map((i) => `${i.dt_id} ${i.customer_no} ${i.building_code} ${i.call_back_form_no}`).join(" ")}`.toLowerCase().includes(q.toLowerCase()))
+      .filter((x) => !q || `${x.user} ${x.en?.full_name ?? ""} ${x.items.map((i) => `${i.dt_id} ${i.fid} ${i.structure} ${i.customer_no} ${i.building_code} ${i.call_back_form_no}`).join(" ")}`.toLowerCase().includes(q.toLowerCase()))
       .sort((a, b) => b.items.length - a.items.length);
   }, [m, q]);
 
@@ -323,7 +342,7 @@ function CaptureCheck({ m }: { m: Model }) {
   }
 
   return (
-    <Section title="Capture check: submissions to correct" actions={<Input className="w-full sm:w-64" placeholder="Search staff, DT, customer no…" value={q} onChange={(e) => setQ(e.target.value)} />}>
+    <Section title="Capture check: submissions to correct" actions={<div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={!m.capture_issues.length} onClick={() => downloadFlagged(m)}><Download /> Download flagged (FID, DT, feeder, building, structure_, customer no)</Button><Input className="w-full sm:w-64" placeholder="Search staff, DT, FID, customer no…" value={q} onChange={(e) => setQ(e.target.value)} /></div>}>
       <p className="mb-3 text-sm text-muted-foreground">Built from the uploaded enumeration file. Only captures with a problem are kept, with the call-back form no, customer no and building code when the file had them.</p>
       <div className="space-y-3">
         {groups.map(({ user, items, en }) => {
@@ -345,10 +364,10 @@ function CaptureCheck({ m }: { m: Model }) {
               </div>
               <div className="mt-2 overflow-x-auto">
                 <table className="w-full text-xs">
-                  <thead className="text-left uppercase text-muted-foreground"><tr><th className="p-1">DT</th><th>Problem</th><th>Call-back form</th><th>Customer no</th><th>Building code</th><th>Date</th></tr></thead>
+                  <thead className="text-left uppercase text-muted-foreground"><tr><th className="p-1">FID</th><th>DT ID</th><th>Feeder ID</th><th>Building code</th><th>structure_</th><th>Customer no</th><th>Call-back form</th><th>Type</th><th>Problem</th><th>Date</th></tr></thead>
                   <tbody>
                     {items.slice(0, 50).map((i) => (
-                      <tr key={i.id} className="border-t"><td className="p-1">{i.dt_id ?? "—"}</td><td className="text-destructive">{i.reason}</td><td>{i.call_back_form_no ?? "—"}</td><td>{i.customer_no ?? "—"}</td><td>{i.building_code ?? "—"}</td><td>{fmtDate(i.captured_at)}</td></tr>
+                      <tr key={i.id} className="border-t"><td className="p-1">{i.fid ?? "—"}</td><td>{i.dt_id ?? "—"}</td><td>{i.feeder_id ?? "—"}</td><td>{i.building_code ?? "—"}</td><td>{i.structure ?? "—"}</td><td>{i.customer_no ?? "—"}</td><td>{i.call_back_form_no ?? "—"}</td><td>{i.source === "ltpole" ? "LT pole" : "Customer"}</td><td className="text-destructive">{i.reason}</td><td>{fmtDate(i.captured_at)}</td></tr>
                     ))}
                   </tbody>
                 </table>

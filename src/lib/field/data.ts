@@ -4,16 +4,25 @@ import { currentUser, db } from "./firebase";
 import { listAll } from "./db";
 
 export type Feeder = { id: string; feeder_id: string; feeder_name: string; area: string | null; feeder_type: string | null; est_customer_points: number | null; start_date: string | null; target_per_staff_day: number | null; working_days_per_week: number | null; notes?: string | null; locked?: boolean | null };
-export type DT = { id: string; dt_id: string; feeder_id: string; dt_name: string | null; dt_type: string | null; status: string; status_note: string | null; updated_at?: string | null; updated_by?: string | null };
+export type DT = { id: string; dt_id: string; feeder_id: string; dt_name: string | null; dt_type: string | null; status: string; status_note: string | null; updated_at?: string | null; updated_by?: string | null;
+  /** Every username that has ever captured on this DT (customer or LT pole), kept even after the person leaves the project. */
+  worked_by?: string[] | null };
 export type Enumerator = { id: string; username: string; full_name: string | null; phone: string | null; supervisor: string | null; active: boolean | null };
-export type Allocation = { id: string; dt_id: string; enumerator_id: string; allocated_by: string | null; allocated_on: string; due_date: string | null; notes: string | null; status: string; completed_on: string | null };
+export type Allocation = { id: string; dt_id: string; enumerator_id: string; allocated_by: string | null; allocated_on: string; due_date: string | null; notes: string | null; status: string; completed_on: string | null;
+  /** True when the app created this allocation from an upload because the person captured on a DT nobody had assigned to them. */
+  self_assigned?: boolean | null; authorised?: boolean | null; authorised_by?: string | null; authorised_on?: string | null };
 /** One row = one enumerator on one DT on one day (many captures are rolled into `count`). Old per-capture rows have no `day` and count as 1. */
-export type Submission = { id: string; username: string | null; feeder_id: string | null; dt_id: string | null; captured_at: string | null; day: string | null; count: number; fid?: string | null };
+export type Submission = { id: string; username: string | null; feeder_id: string | null; dt_id: string | null; captured_at: string | null; day: string | null; count: number; fid?: string | null;
+  /** "ltpole" rows are LT pole captures (kept apart from customer counts); anything else is a customer capture. */
+  source?: "customer" | "ltpole" | null };
 /** Only captures with a detected problem are kept row-by-row, so staff can find and fix the exact submission. Clean rows are only counted. */
-export type CaptureIssue = { id: string; username: string | null; feeder_id: string | null; dt_id: string | null; captured_at: string | null; reason: string; call_back_form_no: string | null; customer_no: string | null; building_code: string | null; upload: string | null };
+export type CaptureIssue = { id: string; username: string | null; feeder_id: string | null; dt_id: string | null; captured_at: string | null; reason: string; call_back_form_no: string | null; customer_no: string | null; building_code: string | null; upload: string | null;
+  fid?: string | null; structure?: string | null; source?: "customer" | "ltpole" | null };
 /** A saved answer to an alert. kind "user" covers every "not on staff list" alert for that username; kind "alert" covers one alert. */
 export type Resolution = { id: string; kind: "user" | "alert"; key: string; username?: string | null; reason?: string | null; response: string; note?: string | null; resolved_at: string; resolved_by?: string | null };
 export const STAFF_REASON = "Enumerator not on staff list";
+/** A capture on a DT that nobody has assigned on the app. The upload assigns it to the capturer and keeps it flagged until a supervisor authorises it. */
+export const SELF_REASON = "Not assigned on the app (self-assigned)";
 export const STAFF_RESPONSES = ["Resigned", "Left", "Off the project", "Temporarily out", "Supervisor"] as const;
 export const WRONG_RESPONSES = ["Corrected", "Approved", "Reallocated", "Mistake", "Warned"] as const;
 export type Vehicle = { id: string; name: string; driver: string | null; capacity: number | null; icon: string | null; status: string | null; status_note?: string | null };
@@ -86,6 +95,7 @@ export type Alert = {
   count: number;
   first: string | null;
   last: string | null;
+  source?: "customer" | "ltpole";
 };
 export type ResolvedAlert = Alert & { response: string; auto: boolean; resolution?: Resolution | undefined };
 
@@ -93,7 +103,9 @@ export function buildModel(raw: {
   feeders: Feeder[]; dts: DT[]; enumerators: Enumerator[]; allocations: Allocation[];
   submissions: Submission[]; vehicles: Vehicle[]; trips: Trip[]; capture_issues?: CaptureIssue[]; alert_resolutions?: Resolution[];
 }) {
-  raw = { ...raw, capture_issues: raw.capture_issues ?? [], alert_resolutions: raw.alert_resolutions ?? [] };
+  // LT pole captures live in the same collection but are never counted as customers.
+  const ltSubmissions = raw.submissions.filter((s) => s.source === "ltpole");
+  raw = { ...raw, submissions: raw.submissions.filter((s) => s.source !== "ltpole"), capture_issues: raw.capture_issues ?? [], alert_resolutions: raw.alert_resolutions ?? [] };
   const feederById = new Map(raw.feeders.map((f) => [f.feeder_id, f]));
   const dtById = new Map(raw.dts.map((d) => [d.dt_id, d]));
   const enumById = new Map(raw.enumerators.map((e) => [e.id, e]));
@@ -114,29 +126,33 @@ export function buildModel(raw: {
     allocsByDt.set(a.dt_id, arr);
   }
 
-  // Unauthorized / suspicious capture detection.
-  // "Not allocated" checks only apply to LOCKED feeders (work has begun afresh there); other feeders may hold baseline data.
+  // Unauthorized / suspicious capture detection (customer captures and LT pole captures).
+  // Only feeders in the uploaded lookup are worked on: a capture whose DT and feeder are both outside it is ignored.
+  // A DT with an allocation is checked on every feeder; a DT with none is only flagged on LOCKED feeders
+  // (elsewhere it is listed as self-assigned, see buildDtWork).
   const lockedFeeders = new Set(raw.feeders.filter((f) => f.locked).map((f) => f.feeder_id));
   const alertMap = new Map<string, Alert>();
-  for (const s of raw.submissions) {
+  for (const s of [...raw.submissions, ...ltSubmissions]) {
     if (!s.dt_id) continue;
     const dt = dtById.get(s.dt_id);
+    if (!dt && !(s.feeder_id && feederById.has(s.feeder_id))) continue; // not one of the feeders being worked
     const en = enumByUser.get(norm(s.username));
     const day = s.day ?? s.captured_at?.slice(0, 10) ?? null;
+    const lt = s.source === "ltpole";
     let reason = "";
     if (!dt) reason = "DT not in lookup";
     else if (s.feeder_id && dt.feeder_id !== s.feeder_id) reason = `Feeder mismatch (captured on ${s.feeder_id}, DT belongs to ${dt.feeder_id})`;
     else if (!en) reason = STAFF_REASON;
-    else if (lockedFeeders.has(dt.feeder_id)) reason = allocationProblem(allocsByDt.get(dt.dt_id) ?? [], en.id, day);
+    else reason = allocationProblem(allocsByDt.get(dt.dt_id) ?? [], en.id, day, lockedFeeders.has(dt.feeder_id));
     if (!reason) continue;
-    const key = `${norm(s.username)}|${s.dt_id}|${reason}`;
+    const key = `${norm(s.username)}|${s.dt_id}|${reason}${lt ? "|LT" : ""}`;
     const cur = alertMap.get(key);
     if (cur) {
       cur.count += s.count;
       if (s.captured_at && (!cur.last || s.captured_at > cur.last)) cur.last = s.captured_at;
       if (s.captured_at && (!cur.first || s.captured_at < cur.first)) cur.first = s.captured_at;
     } else {
-      alertMap.set(key, { key, username: s.username ?? "unknown", enumerator: en, dt_id: s.dt_id, dt, feeder_id: s.feeder_id, reason, count: s.count, first: s.captured_at, last: s.captured_at });
+      alertMap.set(key, { key, username: s.username ?? "unknown", enumerator: en, dt_id: s.dt_id, dt, feeder_id: s.feeder_id, reason, count: s.count, first: s.captured_at, last: s.captured_at, source: lt ? "ltpole" : "customer" });
     }
   }
 
@@ -170,7 +186,7 @@ export function buildModel(raw: {
   const issueHandled = (i: CaptureIssue) => {
     const u = norm(i.username);
     if (i.reason === STAFF_REASON && (supervisorKeys.has(squash(i.username)) || resUser.has(u))) return true;
-    return resAlert.has(`${u}|${i.dt_id}|${i.reason}`);
+    return resAlert.has(`${u}|${i.dt_id}|${i.reason}${i.source === "ltpole" ? "|LT" : ""}`);
   };
   raw = { ...raw, capture_issues: (raw.capture_issues ?? []).filter((i) => !issueHandled(i)) };
 
@@ -181,16 +197,20 @@ export function buildModel(raw: {
     issues: (raw.capture_issues ?? []).filter((i) => (i.captured_at?.slice(0, 10) ?? "") > limit).map((i) => i.id),
   };
 
-  return { ...raw, capture_issues: raw.capture_issues ?? [], feederById, dtById, enumById, enumByUser, subsByDt, subsByFeeder, allocsByDt, alerts, resolvedAlerts, supervisorCaptures, futureIds };
+  return { ...raw, ltSubmissions, capture_issues: raw.capture_issues ?? [], feederById, dtById, enumById, enumByUser, subsByDt, subsByFeeder, allocsByDt, alerts, resolvedAlerts, supervisorCaptures, futureIds };
 }
 
 /**
- * On a LOCKED feeder a capture must be on a DT that is allocated to that enumerator and not yet completed.
+ * Is this capture allowed on this DT?
+ * - someone holds the DT but it is not this person: flagged (team DTs list every member, so partners pass)
+ * - nobody holds it: flagged only on a LOCKED feeder, otherwise it is handled as a self-assignment
  * Captures dated up to the completion day still count; later ones are flagged.
  */
-function allocationProblem(all: Allocation[], enumId: string, day: string | null): string {
-  const mine = all.filter((a) => a.enumerator_id === enumId && a.status !== "cancelled");
-  if (!mine.length) return all.length ? "DT allocated to someone else" : "DT not allocated to anyone";
+function allocationProblem(all: Allocation[], enumId: string, day: string | null, locked: boolean): string {
+  const live = all.filter((a) => a.status !== "cancelled");
+  if (!live.length) return locked ? "DT not allocated to anyone" : "";
+  const mine = live.filter((a) => a.enumerator_id === enumId);
+  if (!mine.length) return "DT allocated to someone else";
   if (day && mine.every((a) => a.status === "completed" && a.completed_on && day > a.completed_on)) return "Captured after DT was completed";
   return "";
 }
@@ -287,8 +307,10 @@ export function captureIssueReason(m: Model, username: string | null, feederId: 
   if (feederId && dt.feeder_id !== feederId) return `Feeder mismatch (captured on ${feederId}, DT belongs to ${dt.feeder_id})`;
   const en = m.enumByUser.get(norm(username));
   if (!en) return STAFF_REASON;
-  if (m.feederById.get(dt.feeder_id)?.locked) return allocationProblem(m.allocsByDt.get(dt.dt_id) ?? [], en.id, day);
-  return "";
+  const allocs = m.allocsByDt.get(dt.dt_id) ?? [];
+  const locked = !!m.feederById.get(dt.feeder_id)?.locked;
+  if (!allocs.some((a) => a.status !== "cancelled") && !locked) return SELF_REASON;
+  return allocationProblem(allocs, en.id, day, locked);
 }
 
 /** A DT counts as "private" when its type or name says so. Private DTs may be given to someone who already has another open DT. */

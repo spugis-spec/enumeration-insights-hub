@@ -832,7 +832,10 @@
                         </script>
                     </div>
                     <div class="bg-white rounded-xl shadow-md p-6">
-                        <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2"><span>📁</span> Upload Data Files</h2>
+                        <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
+                        <h2 class="text-lg font-semibold text-gray-800 flex items-center gap-2"><span>📁</span> Upload Data Files</h2>
+                        <button type="button" id="mfToggleBtn" onclick="toggleMergeTool()" class="text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors" title="Merge the raw zipped exports, then attach them to the boxes below">🧩 Merge Feeders tool</button>
+                        </div>
                         <div class="grid md:grid-cols-2 gap-4">
                             <div class="upload-zone rounded-lg p-4 text-center cursor-pointer" id="zone-dss" onclick="document.getElementById('file-dss').click()"><button type="button" class="clear-upload-btn" title="Clear file" onclick="event.stopPropagation(); clearUploadZone('dss');">✕</button><input type="file" id="file-dss" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleFileUpload(this, 'dss')"><div class="text-3xl mb-2">🏭</div><div class="font-medium text-gray-700">DT / Substation</div><div class="text-sm text-gray-500" id="status-dss">Click or drag to upload</div></div>
                             <div class="upload-zone rounded-lg p-4 text-center cursor-pointer" id="zone-ht" onclick="document.getElementById('file-ht').click()"><button type="button" class="clear-upload-btn" title="Clear file" onclick="event.stopPropagation(); clearUploadZone('ht');">✕</button><input type="file" id="file-ht" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleFileUpload(this, 'ht')"><div class="text-3xl mb-2">🔌</div><div class="font-medium text-gray-700">HT Pole</div><div class="text-sm text-gray-500" id="status-ht">Click or drag to upload</div></div>
@@ -841,6 +844,7 @@
                             <div class="upload-zone rounded-lg p-4 text-center cursor-pointer md:col-span-2" id="zone-issues" onclick="document.getElementById('file-issues').click()"><button type="button" class="clear-upload-btn" title="Clear file" onclick="event.stopPropagation(); clearUploadZone('issues');">✕</button><input type="file" id="file-issues" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleFileUpload(this, 'issues')"><div class="text-3xl mb-2">⚠️</div><div class="font-medium text-gray-700">Issue Log</div><div class="text-sm text-gray-500" id="status-issues">Click or drag to upload</div></div>
                             <div class="upload-zone rounded-lg p-4 text-center cursor-pointer md:col-span-2" id="zone-feeder-lookup" onclick="document.getElementById('file-feeder-lookup').click()"><button type="button" class="clear-upload-btn" title="Clear file" onclick="event.stopPropagation(); clearFeederLookupZone();">✕</button><button type="button" title="Download saved feeder lookup" onclick="event.stopPropagation(); downloadFeederLookup();" style="position:absolute;top:6px;right:34px;width:22px;height:22px;border-radius:50%;background:rgba(37,99,235,0.1);color:#2563eb;border:1px solid rgba(37,99,235,0.3);font-size:12px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5;">⬇</button><input type="file" id="file-feeder-lookup" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleFeederLookupUpload(this)"><div class="text-3xl mb-2">⚡</div><div class="font-medium text-gray-700">Feeder Lookup (Code → Name)</div><div class="text-sm text-gray-500" id="status-feeder-lookup">Upload feeder code lookup table (code, feeder_name) — use ⬇ above to download what's saved</div></div>
                         </div>
+                        <div id="mfHost" style="display:none"></div>
                     </div>
                     <div class="flex gap-4 flex-wrap">
                         <button id="generateReportBtn" onclick="generateReport()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-colors flex items-center justify-center gap-2"><span>📊</span> Generate Report</button>
@@ -2178,6 +2182,24 @@
     // ============================================
     // FILE UPLOAD
     // ============================================
+    // Merge Feeders tool: hidden until asked for; its files load the first time it is opened.
+    function toggleMergeTool() {
+        const host=document.getElementById('mfHost'), btn=document.getElementById('mfToggleBtn');
+        if(!host||!btn) return;
+        const show=host.style.display==='none';
+        host.style.display=show?'block':'none';
+        btn.textContent=show?'🧩 Hide Merge Feeders tool':'🧩 Merge Feeders tool';
+        if(!show||host.dataset.ready) return;
+        host.dataset.ready='loading';
+        host.innerHTML='<p class="text-sm text-gray-500 py-4">Loading the Merge Feeders tool…</p>';
+        const css=document.createElement('link'); css.rel='stylesheet'; css.href='merge-feeders/mf.css'; document.head.appendChild(css);
+        const s=document.createElement('script'); s.src='merge-feeders/mf.js';
+        s.onload=()=>window.MergeFeeders.ensureLibs().then(()=>{ window.MergeFeeders.mount(host); host.dataset.ready='yes'; })
+            .catch(e=>{ host.dataset.ready=''; host.innerHTML='<p class="text-sm text-red-600 py-4">Could not start the tool: '+e.message+'</p>'; });
+        s.onerror=()=>{ host.dataset.ready=''; host.innerHTML='<p class="text-sm text-red-600 py-4">Could not load the Merge Feeders tool files.</p>'; };
+        document.head.appendChild(s);
+    }
+
     function setupDragAndDrop() {
         document.querySelectorAll('.upload-zone').forEach(zone => {
             zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('dragover');});

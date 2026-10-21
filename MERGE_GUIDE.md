@@ -60,3 +60,13 @@ Firebase 13 needs **Node 24 or newer**. Install with `npm install` (the `.npmrc`
 Checked: type-check, production build, existing test, every route serves, the signed-out views, the Devices tab embedding the portal, and the migration helpers' unit tests.
 
 Not checked, because it needs your live Firebase projects: signing in, the rules against real data, the migration against real data, and the Weekly Report with real files. Run `npm run dry-run` before the real migration, and keep the old projects until you have looked through each tab.
+
+## Merge Feeders tool (Dashboard > Upload Data Files)
+
+The standalone `MergeFeeders_FINAL2.html` now lives inside the Dashboard, hidden until you press **🧩 Merge Feeders tool** next to "Upload Data Files". It loads only when opened.
+
+- Steps 1 to 4 are the original tool: zipped exports in, choose the date/time column, choose columns to keep, optional date range, optional output folder (Chrome/Edge), export as CSV or Excel. **Process only (no export)** skips saving files.
+- **Step 5** is new: each processed file is matched to an upload box (DT / Substation, HT Pole, LT Pole, Customer Enumeration, Issue Log) by file name, then by columns. You can change a match or untick a file, then press **Attach**. It goes into the box the same way as uploading the exported CSV by hand. Only one file fits each box.
+- **Generate the report for the date you want**: pick a date (or a from-through range) and press Generate Report.
+
+The tool's own libraries (JSZip, PapaParse) are served from `public/legacy/merge-feeders/`, not a CDN. The rest of the Dashboard page still loads some libraries from CDNs, so for a fully offline machine keep using the standalone HTML file.

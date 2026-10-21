@@ -1,0 +1,52 @@
+/* Merge Feeders tool: every rule is scoped to #mfTool so nothing leaks into the Dashboard. */
+#mfTool{
+  --mf-bg:#0f172a; --mf-panel:#111827; --mf-panel2:#1a2234; --mf-border:#2a3350;
+  --mf-text:#e5e9f2; --mf-muted:#9aa4bf; --mf-accent:#3b82f6; --mf-accent2:#22c55e;
+  --mf-warn:#f59e0b; --mf-err:#ef4444;
+  margin-top:20px; padding:22px 20px 18px; border-radius:16px; text-align:left;
+  background:linear-gradient(180deg,#0b1220,#0f1830); color:var(--mf-text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:14px; line-height:1.45;
+}
+#mfTool *{box-sizing:border-box;}
+#mfTool h1{font-size:1.35rem; margin:0 0 4px; font-weight:700; color:var(--mf-text);}
+#mfTool .mf-sub{color:var(--mf-muted); margin:0 0 22px; font-size:.92rem;}
+#mfTool .mf-card{background:var(--mf-panel); border:1px solid var(--mf-border); border-radius:14px; padding:18px 20px; margin-bottom:18px;}
+#mfTool .mf-card h2{font-size:1.05rem; margin:0 0 4px; display:flex; align-items:center; gap:8px; font-weight:700; color:var(--mf-text);}
+#mfTool .mf-card h3{font-size:.95rem; margin:18px 0 4px; font-weight:700; color:var(--mf-text);}
+#mfTool .mf-step{display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:var(--mf-accent); color:#fff; font-size:.8rem; font-weight:700; flex-shrink:0;}
+#mfTool .mf-hint{color:var(--mf-muted); font-size:.85rem; margin:4px 0 14px;}
+#mfTool code{background:var(--mf-panel2); padding:1px 5px; border-radius:5px; font-size:.82em; color:#dbe4ff;}
+#mfTool input[type="file"]{display:block; width:100%; padding:10px; background:var(--mf-panel2); border:1px dashed var(--mf-border); border-radius:10px; color:var(--mf-text); font-size:.9rem;}
+#mfTool input[type="date"]{background:var(--mf-panel2); color:var(--mf-text); border:1px solid var(--mf-border); border-radius:8px; padding:6px 8px; font-size:.85rem; color-scheme:dark;}
+#mfTool button{background:var(--mf-accent); color:#fff; border:none; border-radius:9px; padding:10px 18px; font-size:.9rem; font-weight:600; cursor:pointer; transition:background .15s ease;}
+#mfTool button:hover{background:#2f6fe0;}
+#mfTool button:disabled{background:#334059; color:#7a869e; cursor:not-allowed;}
+#mfTool button.mf-secondary{background:var(--mf-panel2); border:1px solid var(--mf-border); color:var(--mf-text);}
+#mfTool button.mf-secondary:hover{background:#232d47;}
+#mfTool button.mf-green{background:#16a34a;}
+#mfTool button.mf-green:hover{background:#15803d;}
+#mfTool .mf-btn-row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px;}
+#mfTool table{width:100%; border-collapse:collapse; margin-top:14px; font-size:.85rem;}
+#mfTool th,#mfTool td{padding:8px 10px; text-align:left; border-bottom:1px solid var(--mf-border); color:var(--mf-text);}
+#mfTool th{color:var(--mf-muted); font-weight:600; font-size:.78rem; text-transform:uppercase; letter-spacing:.03em; background:transparent;}
+#mfTool select,#mfTool textarea{background:var(--mf-panel2); color:var(--mf-text); border:1px solid var(--mf-border); border-radius:8px; padding:6px 8px; font-size:.85rem; font-family:inherit;}
+#mfTool textarea{width:100%; min-height:70px; resize:vertical; line-height:1.5;}
+#mfTool .mf-badge{display:inline-block; padding:2px 9px; border-radius:99px; font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em;}
+#mfTool .mf-badge.ok{background:rgba(34,197,94,.15); color:var(--mf-accent2);}
+#mfTool .mf-badge.warn{background:rgba(245,158,11,.15); color:var(--mf-warn);}
+#mfTool .mf-badge.err{background:rgba(239,68,68,.15); color:var(--mf-err);}
+#mfTool .mf-log{background:#0a0f1e; border:1px solid var(--mf-border); border-radius:10px; padding:12px 14px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.8rem; max-height:260px; overflow-y:auto; white-space:pre-wrap; color:#c9d3ea;}
+#mfTool .mf-log .line{padding:2px 0;}
+#mfTool .mf-log .ok{color:#4ade80;} #mfTool .mf-log .warn{color:#fbbf24;} #mfTool .mf-log .err{color:#f87171;} #mfTool .mf-log .info{color:#7dd3fc;}
+#mfTool .mf-filename{color:#dbe4ff; font-weight:600;}
+#mfTool .mf-muted{color:var(--mf-muted);}
+#mfTool .mf-pill{font-size:.72rem; background:var(--mf-panel2); border:1px solid var(--mf-border); padding:2px 8px; border-radius:99px; color:var(--mf-muted);}
+#mfTool .mf-folder{font-size:.85rem; color:var(--mf-muted); margin-top:8px;}
+#mfTool .mf-folder.set{color:var(--mf-accent2);}
+#mfTool .mf-kv{display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;}
+#mfTool .mf-kv > div{flex:1; min-width:240px;}
+#mfTool label.mf-small{display:block; font-size:.78rem; color:var(--mf-muted); margin-bottom:4px;}
+#mfTool .mf-foot{color:var(--mf-muted); font-size:.78rem; text-align:center; margin-top:14px;}
+#mfTool .mf-note{border:1px solid var(--mf-border); background:var(--mf-panel2); border-radius:10px; padding:10px 12px; font-size:.84rem; color:var(--mf-muted); margin-top:10px;}
+#mfTool .mf-attachstatus{font-size:.85rem; color:var(--mf-muted);}
