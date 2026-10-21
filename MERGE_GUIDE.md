@@ -70,3 +70,14 @@ The standalone `MergeFeeders_FINAL2.html` now lives inside the Dashboard, hidden
 - **Generate the report for the date you want**: pick a date (or a from-through range) and press Generate Report.
 
 The tool's own libraries (JSZip, PapaParse) are served from `public/legacy/merge-feeders/`, not a CDN. The rest of the Dashboard page still loads some libraries from CDNs, so for a fully offline machine keep using the standalone HTML file.
+
+## Capture checks: Customer Enumeration + LT Pole (Field Manager > Data Uploads)
+
+- **Two files.** Upload a Customer Enumeration file, an LT Pole file, or both. Both carry the DT ID (a `DT ID` column, or one starting with `dss_`). LT Pole captures show who worked on a DT but are not counted as customers, so progress numbers are unchanged.
+- **Check the Dashboard's upload** reads the Customer Enumeration and LT Pole data the Dashboard last saved to the cloud (Save to Cloud there).
+- **Which feeders and dates.** Before anything is saved you choose which of the lookup's feeders to check (locked feeders are pre-selected) and the dates. Data on other feeders is left out. The one exception: someone who works on the chosen feeders but captured on a feeder that is not in the lookup is flagged as picking the wrong feeder.
+- **Flags** carry the FID, DT ID, feeder, building code, structure no., customer no. and call-back form no. They are listed in Capture Alerts and can be downloaded after each check.
+- **Self-assigned DTs.** If a staff member captured on a DT nobody had assigned on the app, the DT is assigned to them (status Assigned) and marked **Self-assigned · needs authorization** in DT Allocation, where you or a supervisor can **Authorize** or **Reject** it. Captures on it stay flagged until it is authorized.
+- **Partners.** A capture on a DT that is assigned to someone else is flagged, and marked as a team partner when the Dashboard pairing says so.
+- **Who worked on a DT.** Every username that captured on a DT is kept against it, shown under the DT as "Captured by", even after the person left: supervisors in blue, people resolved as left struck through with the reason, people not on the staff list in red, self-assigned in amber. Clearing captures does not erase this.
+- No Firebase rule changes are needed for this.
