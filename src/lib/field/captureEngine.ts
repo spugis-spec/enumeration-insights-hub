@@ -1,5 +1,5 @@
 import {
-  SELF_ASSIGNED_REASON, STAFF_REASON, WRONG_FEEDER_REASON,
+  LEFT_ONGOING_REASON, SELF_ASSIGNED_REASON, STAFF_REASON, WRONG_FEEDER_REASON,
   type Allocation, type DT, type DtWorker, type Enumerator, type Model,
 } from "./data";
 import { parseCaptureTime } from "./dates";
@@ -27,13 +27,20 @@ export type Group = { id: string; username: string | null; feeder_id: string | n
 export type IssueRec = {
   key: string; username: string | null; feeder_id: string | null; dt_id: string | null; captured_at: string | null; reason: string;
   fid: string | null; structure_no: string | null; building_code: string | null; customer_no: string | null; call_back_form_no: string | null; source: CaptureSource; upload: string;
+  /** The DT(s) the person should be working on (their ongoing allocations), as DT IDs. */
+  correct_dt: string | null;
 };
 export type SelfAssign = { dt: DT; enumerator: Enumerator; count: number; first: string | null; last: string | null };
-export type ReportKind = "self_assigned" | "other_holder" | "not_on_staff" | "wrong_feeder" | "dt_not_in_lookup" | "feeder_mismatch" | "after_completed" | "not_allocated";
+export type ReportKind = "left_ongoing" | "self_assigned" | "other_holder" | "not_on_staff" | "wrong_feeder" | "dt_not_in_lookup" | "feeder_mismatch" | "after_completed" | "not_allocated";
 export type ReportRow = { kind: ReportKind; dt_id: string | null; dt_name: string | null; feeder_id: string | null; users: string[]; count: number; holders: string[]; partner: boolean };
+export type ConfirmedRow = { dt_id: string; dt_name: string | null; feeder_id: string | null; users: string[]; days: string[]; count: number };
 export type FeederFound = { feeder_id: string; inLookup: boolean; rows: number };
 export type Analysis = {
   groups: Group[]; issues: IssueRec[]; selfAssign: SelfAssign[]; workers: Map<string, DtWorker[]>; report: ReportRow[]; feeders: FeederFound[];
+  /** Assigned staff who captured on their own DT (per date): confirms who worked. */
+  confirmed: ConfirmedRow[];
+  /** Allocation id -> latest day the assigned person worked on it. */
+  worked: { allocId: string; last: string }[];
   stats: { rowsRead: number; inScope: number; withDt: number; ignoredNotFocused: number; ignoredNotInLookup: number; ignoredDates: number; flagged: number; dayMin: string | null; dayMax: string | null };
 };
 
@@ -89,6 +96,17 @@ export function readRow(r: CaptureRow): Fields {
 
 /** Feeders present in the rows, and whether each is in the uploaded lookup (used to build the "which feeders?" choice). */
 const SCI = /^\d+(\.\d+)?e\+?\d+$/i;
+/** Why a scan cannot be used (no rows, no DT IDs, DT IDs ruined by scientific notation, no lookup), or null when it is fine. */
+export function validateCaptureScan(scan: ReturnType<typeof scanFeeders>, m: Model): string | null {
+  if (!scan.rows) return "No capture rows found.";
+  if (!scan.withDt)
+    return `No DT IDs found, so nothing was imported. Columns in your file: ${scan.columns.slice(0, 14).join(", ")}${scan.columns.length > 14 ? "…" : ""}. Add a column named DT_ID (or DT ID), or one starting with dss_.`;
+  if (scan.sci)
+    return `DT ID "${scan.sci}" is in scientific notation, so the real digits are lost and nothing was imported. Re-export the file with the DT ID column kept as text (or as ="501101202901") and upload again.`;
+  if (!m.feeders.length) return "Upload the feeder & DT lookup first: captures are checked against it.";
+  return null;
+}
+
 export function scanFeeders(inputs: CaptureInput[], m: Model): { feeders: FeederFound[]; dayMin: string | null; dayMax: string | null; rows: number; withDt: number; sci: string | null; columns: string[] } {
   const tally = new Map<string, number>();
   let dayMin: string | null = null, dayMax: string | null = null, rows = 0, withDt = 0, sci: string | null = null;
@@ -130,6 +148,15 @@ export function analyzeCaptures(opts: { inputs: CaptureInput[]; m: Model; scope:
     if (en && eff && focus.has(eff)) working.add(en.id);
   }
 
+  // DTs each person is working on right now (allocation still active, DT not completed)
+  const ongoing = new Map<string, DT[]>();
+  for (const d of m.dts) {
+    if (d.status === "completed") continue;
+    for (const a of m.allocsByDt.get(d.dt_id) ?? []) if (a.status === "active") ongoing.set(a.enumerator_id, [...(ongoing.get(a.enumerator_id) ?? []), d]);
+  }
+  const confirmedMap = new Map<string, { dt: DT; users: Set<string>; days: Set<string>; count: number }>();
+  const workedMap = new Map<string, string>();
+
   // team partners (usernames) by username, from the Dashboard pairings
   const partnersOf = (u: string): Set<string> => {
     const out = new Set<string>();
@@ -161,9 +188,9 @@ export function analyzeCaptures(opts: { inputs: CaptureInput[]; m: Model; scope:
     const dt = f.dt ? m.dtById.get(f.dt) : undefined;
     const en = m.enumByUser.get(norm(f.username));
     const base = { fid: f.fid, structure_no: f.structure, building_code: f.building, customer_no: f.customer, call_back_form_no: f.callback, source: inp.source, upload: inp.label };
-    const flag = (reason: string, kind: ReportKind, holders: string[] = [], partner = false) => {
+    const flag = (reason: string, kind: ReportKind, holders: string[] = [], partner = false, correct: string | null = null) => {
       const key = [norm(f.username), f.dt ?? "", f.callback ?? "", f.customer ?? "", f.building ?? "", f.structure ?? "", f.fid ?? "", f.at ?? "", inp.source, reason].join("|");
-      issues.set(key, { key, username: f.username, feeder_id: f.feeder ?? dt?.feeder_id ?? null, dt_id: f.dt, captured_at: f.at, reason, ...base });
+      issues.set(key, { key, username: f.username, feeder_id: f.feeder ?? dt?.feeder_id ?? null, dt_id: f.dt, captured_at: f.at, reason, ...base, correct_dt: correct });
       addReport(kind, dt, f.dt, f.feeder, f.username, 1, holders, partner);
     };
 
@@ -204,15 +231,24 @@ export function analyzeCaptures(opts: { inputs: CaptureInput[]; m: Model; scope:
 
     const live = (m.allocsByDt.get(dt.dt_id) ?? []).filter((a) => a.status !== "cancelled");
     const mine = live.filter((a) => a.enumerator_id === en.id);
+    const elsewhere = (ongoing.get(en.id) ?? []).filter((d) => d.dt_id !== dt.dt_id);
+    const correct = elsewhere.map((d) => d.dt_id).join(", ") || null;
     if (mine.length) {
+      for (const a of mine) if (f.day && (!workedMap.get(a.id) || f.day > workedMap.get(a.id)!)) workedMap.set(a.id, f.day);
       if (mine.every((a) => a.self_assigned && a.authorized !== true)) { flag(SELF_ASSIGNED_REASON, "self_assigned"); continue; }
-      if (f.day && mine.every((a) => a.status === "completed" && a.completed_on && f.day! > a.completed_on)) { flag("Captured after DT was completed", "after_completed"); }
+      if (f.day && mine.every((a) => a.status === "completed" && a.completed_on && f.day! > a.completed_on)) { flag("Captured after DT was completed", "after_completed"); continue; }
+      // the assigned person worked on their own DT: confirmed
+      const c = confirmedMap.get(dt.dt_id) ?? { dt, users: new Set<string>(), days: new Set<string>(), count: 0 };
+      if (f.username) c.users.add(f.username);
+      if (f.day) c.days.add(f.day);
+      c.count++;
+      confirmedMap.set(dt.dt_id, c);
       continue;
     }
     if (live.length) {
       const holders = live.map((a) => m.enumById.get(a.enumerator_id)).filter((e): e is Enumerator => !!e);
       const partner = holders.some((h) => partnersOf(f.username ?? "").has(norm(h.username)));
-      flag("DT allocated to someone else", "other_holder", holders.map((h) => h.full_name || h.username), partner);
+      flag("DT allocated to someone else", "other_holder", holders.map((h) => h.full_name || h.username), partner, correct);
       continue;
     }
     if (dt.status === "unassigned" || dt.status === "assigned") {
@@ -221,10 +257,12 @@ export function analyzeCaptures(opts: { inputs: CaptureInput[]; m: Model; scope:
       if (f.at && (!cur.first || f.at < cur.first)) cur.first = f.at;
       if (f.at && (!cur.last || f.at > cur.last)) cur.last = f.at;
       selfMap.set(`${dt.dt_id}|${en.id}`, cur);
-      flag(SELF_ASSIGNED_REASON, "self_assigned");
+      // still working on another DT? that is the more useful thing to flag
+      if (elsewhere.length) flag(LEFT_ONGOING_REASON, "left_ongoing", [], false, correct);
+      else flag(SELF_ASSIGNED_REASON, "self_assigned");
       continue;
     }
-    flag("DT not allocated to anyone", "not_allocated");
+    flag("DT not allocated to anyone", "not_allocated", [], false, correct);
   }
 
   const tally = scanFeeders(inputs, m).feeders;
@@ -235,6 +273,8 @@ export function analyzeCaptures(opts: { inputs: CaptureInput[]; m: Model; scope:
     workers: new Map([...workers].map(([dt, per]) => [dt, [...per.values()]])),
     report: [...reportMap.values()].map(({ _u, _h, ...r }) => ({ ...r, users: [..._u], holders: [..._h] })).sort((a, b) => b.count - a.count),
     feeders: tally,
+    confirmed: [...confirmedMap.values()].map((c) => ({ dt_id: c.dt.dt_id, dt_name: c.dt.dt_name, feeder_id: c.dt.feeder_id, users: [...c.users], days: [...c.days].sort(), count: c.count })).sort((a, b) => b.count - a.count),
+    worked: [...workedMap].map(([allocId, last]) => ({ allocId, last })),
     stats: { ...stats, flagged: issues.size },
   };
 }

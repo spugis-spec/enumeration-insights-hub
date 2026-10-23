@@ -13,6 +13,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { AuthProvider } from "../lib/auth";
 import { AppHeader } from "../components/AppHeader";
+import { DashboardBridge } from "../components/DashboardBridge";
 import { Toaster } from "@/components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
@@ -126,6 +127,7 @@ function RootComponent() {
       <AuthProvider>
         <AppHeader />
         <Outlet />
+        <DashboardBridge />
         <Toaster richColors position="top-right" />
       </AuthProvider>
     </QueryClientProvider>

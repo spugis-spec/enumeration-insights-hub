@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ClipboardCopy, MessageCircle, SearchCheck, Trash2, Undo2 } from "lucide-react";
 import {
@@ -284,7 +284,7 @@ export function AlertsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void 
   );
 }
 
-function issueLine(i: CaptureIssue, n: number) {
+function issueLine(i: CaptureIssue, n: number, dtLabel: (id: string | null) => string) {
   const parts = [
     i.fid && `FID: ${i.fid}`,
     i.feeder_id && `Feeder: ${i.feeder_id}`,
@@ -293,7 +293,8 @@ function issueLine(i: CaptureIssue, n: number) {
     i.customer_no && `Customer no: ${i.customer_no}`,
     i.building_code && `Building code: ${i.building_code}`,
   ].filter(Boolean);
-  return `${n}. ${i.source === "lt" ? "[LT Pole] " : ""}DT ${i.dt_id ?? "(none)"}${i.captured_at ? ` on ${fmtDate(i.captured_at)}` : ""} — ${i.reason}${parts.length ? `\n   ${parts.join(" · ")}` : ""}`;
+  const correct = i.correct_dt ? `\n   Should be working on: ${i.correct_dt.split(", ").map((d) => dtLabel(d)).join(", ")}` : "";
+  return `${n}. ${i.source === "lt" ? "[LT Pole] " : ""}Wrong DT: ${dtLabel(i.dt_id)}${i.captured_at ? ` on ${fmtDate(i.captured_at)}` : ""} — ${i.reason}${parts.length ? `\n   ${parts.join(" · ")}` : ""}${correct}`;
 }
 
 /** Problem captures grouped by enumerator, each with a ready-to-send correction message. */
@@ -301,6 +302,11 @@ function CaptureCheck({ m }: { m: Model }) {
   const refresh = useRefresh();
   const optimistic = useOptimistic();
   const [q, setQ] = useState("");
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggleOpen = (ids: string[], on?: boolean) => setOpen((p) => { const n = new Set(p); for (const id of ids) { if (on ?? !n.has(id)) n.add(id); else n.delete(id); } return n; });
+  /** Full DT name with its code, never the bare code. */
+  const dtName = (id: string | null) => (id ? m.dtById.get(id)?.dt_name || id : "(none)");
+  const dtLabel = (id: string | null) => (id ? (m.dtById.get(id)?.dt_name ? `${m.dtById.get(id)!.dt_name} (${id})` : id) : "(none)");
   const groups = useMemo(() => {
     const g = new Map<string, CaptureIssue[]>();
     for (const i of m.capture_issues) {
@@ -314,7 +320,7 @@ function CaptureCheck({ m }: { m: Model }) {
   }, [m, q]);
 
   const message = (name: string, items: CaptureIssue[], max = 40) =>
-    `Hello ${name}, the following ${items.length} submission(s) need correction. Please go back to each one and fix it:\n\n${items.slice(0, max).map((i, n) => issueLine(i, n + 1)).join("\n")}${items.length > max ? `\n…and ${items.length - max} more. Contact your supervisor for the full list.` : ""}\n\nCapture ONLY the DT allocated to you.`;
+    `Hello ${name}, the following ${items.length} submission(s) need correction. Please go back to each one and fix it:\n\n${items.slice(0, max).map((i, n) => issueLine(i, n + 1, dtLabel)).join("\n")}${items.length > max ? `\n…and ${items.length - max} more. Contact your supervisor for the full list.` : ""}\n\nCapture ONLY the DT allocated to you.`;
 
   async function clear(items: CaptureIssue[]) {
     if (!window.confirm(`Remove these ${items.length} capture(s) from the list? Do this once they have been corrected.`)) return;
@@ -327,7 +333,7 @@ function CaptureCheck({ m }: { m: Model }) {
 
   return (
     <Section title="Capture check: submissions to correct" actions={<Input className="w-full sm:w-64" placeholder="Search staff, DT, customer no…" value={q} onChange={(e) => setQ(e.target.value)} />}>
-      <p className="mb-3 text-sm text-muted-foreground">Built from the uploaded Customer Enumeration and LT Pole files. Only captures with a problem are kept, with the FID, DT ID, feeder, structure no, customer no and building code when the file had them.</p>
+      <p className="mb-3 text-sm text-muted-foreground">Built from the uploaded Customer Enumeration and LT Pole files. Only captures with a problem are kept. Press Details on a row for the FID, building code, customer no., structure no. (LT), and the wrong and correct DT. Flags clear themselves once the DT is allocated or authorized.</p>
       <div className="space-y-3">
         {groups.map(({ user, items, en }) => {
           const name = en?.full_name || user;
@@ -342,17 +348,44 @@ function CaptureCheck({ m }: { m: Model }) {
                       <MessageCircle className="h-3 w-3" /> Send on WhatsApp
                     </a>
                   )}
+                  <Button size="sm" variant="outline" onClick={() => toggleOpen(items.slice(0, 50).map((i) => i.id), !items.slice(0, 50).every((i) => open.has(i.id)))}>{items.slice(0, 50).every((i) => open.has(i.id)) ? "Hide all details" : "Show all details"}</Button>
                   <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(message(name, items, 100000)).then(() => toast.success("Message copied"))}><ClipboardCopy /> Copy</Button>
                   <Button size="sm" variant="ghost" className="text-destructive" onClick={() => clear(items)}><Trash2 /> Fixed</Button>
                 </div>
               </div>
               <div className="mt-2 overflow-x-auto">
                 <table className="w-full text-xs">
-                  <thead className="text-left uppercase text-muted-foreground"><tr><th className="p-1">FID</th><th>DT</th><th>Feeder</th><th>Problem</th><th>Structure no</th><th>Call-back form</th><th>Customer no</th><th>Building code</th><th>Date</th></tr></thead>
+                  <thead className="text-left uppercase text-muted-foreground"><tr><th className="p-1">DT</th><th>Problem</th><th>Date</th><th></th></tr></thead>
                   <tbody>
-                    {items.slice(0, 50).map((i) => (
-                      <tr key={i.id} className="border-t"><td className="p-1">{i.fid ?? "—"}</td><td>{i.dt_id ?? "—"}{i.source === "lt" && <span className="ml-1 rounded bg-muted px-1 text-[10px] font-bold">LT</span>}</td><td>{i.feeder_id ?? "—"}</td><td className="text-destructive">{i.reason}</td><td>{i.structure_no ?? "—"}</td><td>{i.call_back_form_no ?? "—"}</td><td>{i.customer_no ?? "—"}</td><td>{i.building_code ?? "—"}</td><td>{fmtDate(i.captured_at)}</td></tr>
-                    ))}
+                    {items.slice(0, 50).map((i) => {
+                      const isOpen = open.has(i.id);
+                      return (
+                        <Fragment key={i.id}>
+                          <tr className="border-t align-top">
+                            <td className="p-1 font-semibold">{dtName(i.dt_id)}{i.source === "lt" && <span className="ml-1 rounded bg-muted px-1 text-[10px] font-bold">LT</span>}</td>
+                            <td className="text-destructive">{i.reason}</td>
+                            <td>{fmtDate(i.captured_at)}</td>
+                            <td className="text-right"><Button size="sm" variant="ghost" className="h-6 px-2 text-xs" aria-expanded={isOpen} onClick={() => toggleOpen([i.id])}>{isOpen ? "Hide details" : "Details"}</Button></td>
+                          </tr>
+                          {isOpen && (
+                            <tr className="bg-muted/50">
+                              <td colSpan={4} className="p-2">
+                                <dl className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
+                                  <div><dt className="text-[10px] uppercase text-muted-foreground">Wrong DT</dt><dd className="font-semibold text-destructive">{dtLabel(i.dt_id)}</dd></div>
+                                  <div><dt className="text-[10px] uppercase text-muted-foreground">Correct DT (should be on)</dt><dd className="font-semibold text-success">{i.correct_dt ? i.correct_dt.split(", ").map(dtLabel).join(", ") : "—"}</dd></div>
+                                  <div><dt className="text-[10px] uppercase text-muted-foreground">Feeder</dt><dd>{i.feeder_id ?? "—"}</dd></div>
+                                  <div><dt className="text-[10px] uppercase text-muted-foreground">FID</dt><dd>{i.fid ?? "—"}</dd></div>
+                                  <div><dt className="text-[10px] uppercase text-muted-foreground">Structure no (LT)</dt><dd>{i.structure_no ?? "—"}</dd></div>
+                                  <div><dt className="text-[10px] uppercase text-muted-foreground">Building code</dt><dd>{i.building_code ?? "—"}</dd></div>
+                                  <div><dt className="text-[10px] uppercase text-muted-foreground">Customer no</dt><dd>{i.customer_no ?? "—"}</dd></div>
+                                  <div><dt className="text-[10px] uppercase text-muted-foreground">Call-back form</dt><dd>{i.call_back_form_no ?? "—"}</dd></div>
+                                </dl>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {items.length > 50 && <p className="p-1 text-xs text-muted-foreground">…and {items.length - 50} more (all included in Copy).</p>}

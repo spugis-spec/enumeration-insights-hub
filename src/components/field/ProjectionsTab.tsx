@@ -54,7 +54,7 @@ export function ProjectionsTab({ m, isAdmin }: { m: Model; isAdmin: boolean }) {
       doc.text(`Area: ${f.area ?? "-"}   Start date: ${fmtDate(f.start_date)}   Total DTs: ${s.total}   Captures: ${s.captures}`, 12, y + 6);
       doc.text(`${s.assigned} DTs are assigned, ${s.unassigned} are still NOT assigned, ${s.completed} completed, ${s.problematic} problematic and ${s.access_denied} access denied. ${s.noCapture} DTs have no capture yet.`, 12, y + 12, { maxWidth: 186 });
       bars(doc, 12, y + 16, 186, 45, [
-        { label: "Assigned", value: s.assigned, color: [34, 160, 90] }, { label: "Not assigned", value: s.unassigned, color: [210, 50, 40] },
+        { label: "Assigned (Ongoing)", value: s.assigned, color: [34, 160, 90] }, { label: "Not assigned", value: s.unassigned, color: [210, 50, 40] },
         { label: "Completed", value: s.completed, color: [15, 37, 87] }, { label: "Problematic", value: s.problematic, color: [230, 150, 30] },
         { label: "Access denied", value: s.access_denied, color: [60, 60, 60] }, { label: "No capture", value: s.noCapture, color: [150, 150, 170] },
       ]);

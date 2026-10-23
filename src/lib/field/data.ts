@@ -8,16 +8,19 @@ export type Feeder = { id: string; feeder_id: string; feeder_name: string; area:
 export type DtWorker = { username: string; first: string | null; last: string | null; source?: string | null };
 export type DT = { id: string; dt_id: string; feeder_id: string; dt_name: string | null; dt_type: string | null; status: string; status_note: string | null; updated_at?: string | null; updated_by?: string | null; workers?: DtWorker[] | null };
 export type Enumerator = { id: string; username: string; full_name: string | null; phone: string | null; supervisor: string | null; active: boolean | null };
-export type Allocation = { id: string; dt_id: string; enumerator_id: string; allocated_by: string | null; allocated_on: string; due_date: string | null; notes: string | null; status: string; completed_on: string | null; self_assigned?: boolean | null; authorized?: boolean | null };
+export type Allocation = { id: string; dt_id: string; enumerator_id: string; allocated_by: string | null; allocated_on: string; due_date: string | null; notes: string | null; status: string; completed_on: string | null; self_assigned?: boolean | null; authorized?: boolean | null; last_worked_on?: string | null };
 /** One row = one enumerator on one DT on one day (many captures are rolled into `count`). Old per-capture rows have no `day` and count as 1. */
 export type Submission = { id: string; username: string | null; feeder_id: string | null; dt_id: string | null; captured_at: string | null; day: string | null; count: number; fid?: string | null; source?: "lt" | "customer" | null };
 /** Only captures with a detected problem are kept row-by-row, so staff can find and fix the exact submission. Clean rows are only counted. */
-export type CaptureIssue = { id: string; username: string | null; feeder_id: string | null; dt_id: string | null; captured_at: string | null; reason: string; call_back_form_no: string | null; customer_no: string | null; building_code: string | null; upload: string | null; fid?: string | null; structure_no?: string | null; source?: string | null };
+export type CaptureIssue = { id: string; username: string | null; feeder_id: string | null; dt_id: string | null; captured_at: string | null; reason: string; call_back_form_no: string | null; customer_no: string | null; building_code: string | null; upload: string | null; fid?: string | null; structure_no?: string | null; source?: string | null; correct_dt?: string | null };
 /** A saved answer to an alert. kind "user" covers every "not on staff list" alert for that username; kind "alert" covers one alert. */
 export type Resolution = { id: string; kind: "user" | "alert"; key: string; username?: string | null; reason?: string | null; response: string; note?: string | null; resolved_at: string; resolved_by?: string | null };
 export const STAFF_REASON = "Enumerator not on staff list";
 export const SELF_ASSIGNED_REASON = "Self-assigned: DT was not assigned on the app";
 export const WRONG_FEEDER_REASON = "Captured on a feeder that is not in the lookup";
+export const LEFT_ONGOING_REASON = "Has an ongoing DT but captured on a different DT";
+/** Flags that go away by themselves once the DT is allocated (or authorized) to that person. */
+export const ALLOCATION_REASONS = [SELF_ASSIGNED_REASON, LEFT_ONGOING_REASON, "DT allocated to someone else", "DT not allocated to anyone"];
 export const STAFF_RESPONSES = ["Resigned", "Left", "Off the project", "Temporarily out", "Supervisor"] as const;
 export const WRONG_RESPONSES = ["Corrected", "Approved", "Reallocated", "Mistake", "Warned"] as const;
 export type Vehicle = { id: string; name: string; driver: string | null; capacity: number | null; icon: string | null; status: string | null; status_note?: string | null };
@@ -25,7 +28,7 @@ export type Trip = { id: string; vehicle_id: string | null; trip_date: string; d
 
 export const DT_STATUSES = [
   { value: "unassigned", label: "Not assigned" },
-  { value: "assigned", label: "Assigned" },
+  { value: "assigned", label: "Assigned (Ongoing)" },
   { value: "completed", label: "Completed" },
   { value: "problematic", label: "Problematic" },
   { value: "access_denied", label: "Access denied" },
@@ -177,6 +180,12 @@ export function buildModel(raw: {
   const issueHandled = (i: CaptureIssue) => {
     const u = norm(i.username);
     if (i.reason === STAFF_REASON && (supervisorKeys.has(squash(i.username)) || resUser.has(u))) return true;
+    // Allocated or authorized since it was flagged: the problem is already corrected.
+    if (i.dt_id && ALLOCATION_REASONS.includes(i.reason)) {
+      const en = enumByUser.get(u);
+      const ok = en && (allocsByDt.get(i.dt_id) ?? []).some((a) => a.enumerator_id === en.id && a.status !== "cancelled" && !(a.self_assigned && a.authorized !== true));
+      if (ok) return true;
+    }
     return resAlert.has(`${u}|${i.dt_id}|${i.reason}`);
   };
   raw = { ...raw, capture_issues: (raw.capture_issues ?? []).filter((i) => !issueHandled(i)) };

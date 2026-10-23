@@ -25,7 +25,7 @@ export function OverviewTab({ m, goTo }: { m: Model; goTo: (t: string) => void }
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         <Stat label="Feeders" value={m.feeders.length} />
         <Stat label="Total DTs" value={s.total} />
-        <Stat label="Assigned" value={s.assigned} tone="success" sub={`${allocatedPct}% allocated or done`} />
+        <Stat label="Assigned (Ongoing)" value={s.assigned} tone="success" sub={`${allocatedPct}% allocated or done`} />
         <Stat label="Not assigned" value={s.unassigned} tone="danger" />
         <Stat label="Completed" value={s.completed} tone="accent" />
         <Stat label="Problem / denied" value={s.problematic + s.access_denied} tone="warning" />
