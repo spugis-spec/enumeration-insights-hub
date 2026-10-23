@@ -5,9 +5,9 @@ import { CheckCircle2, Download, History, Loader2, Save, Trash2, X, XCircle } fr
 import { addMany, patchMany, removeMany, updateRow, upsertMany, safeId } from "@/lib/field/db";
 import { auth } from "@/lib/field/firebase";
 import { useRefresh, type Model } from "@/lib/field/data";
-import { analyzeCaptures, mergeWorkers, scanFeeders, type Analysis, type CaptureInput, type ReportKind } from "@/lib/field/captureEngine";
-import { buildPairTeams } from "@/lib/field/pairings";
-import { fetchPairingsRaw } from "@/lib/field/pairingsApi";
+import { scanFeeders, validateCaptureScan, type Analysis, type CaptureInput } from "@/lib/field/captureEngine";
+import { applyCaptureCheck, checkSummary, type CheckChoice } from "@/lib/field/captureRun";
+import { CaptureReportDialog, CaptureScopeDialog } from "./CaptureDialogs";
 import { parseCaptureTime } from "@/lib/field/dates";
 import { fetchDashboardCaptureRows } from "@/lib/field/dashboardSync";
 import {
@@ -37,7 +37,6 @@ import {
   type SnapshotMeta,
 } from "@/lib/field/dataTools";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Section } from "./common";
 import { ConfirmDialog, type ConfirmReq } from "./ConfirmDialog";
 
@@ -350,17 +349,8 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
   /** First look at the rows: sanity checks, then ask which feeders and dates to work on. */
   function startCheck(inputs: CaptureInput[]) {
     const scan = scanFeeders(inputs, m);
-    if (!scan.rows) return void toast.error("No capture rows found.");
-    if (!scan.withDt) {
-      return void toast.error(
-        `No DT IDs found, so nothing was imported. Columns in your file: ${scan.columns.slice(0, 14).join(", ")}${scan.columns.length > 14 ? "…" : ""}. Add a column named DT_ID (or DT ID), or one starting with dss_.`,
-      );
-    }
-    if (scan.sci)
-      return void toast.error(
-        `DT ID "${scan.sci}" is in scientific notation, so the real digits are lost and nothing was imported. Re-export the file with the DT ID column kept as text (or as ="501101202901") and upload again.`,
-      );
-    if (!m.feeders.length) return void toast.error("Upload the feeder & DT lookup first: captures are checked against it.");
+    const bad = validateCaptureScan(scan, m);
+    if (bad) return void toast.error(bad);
     setScopeReq({ inputs, scan });
   }
 
@@ -400,71 +390,15 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
   }
 
   /** Runs the check with the chosen feeders and dates, then saves what it found. */
-  async function applyCheck(inputs: CaptureInput[], choice: { feeders: string[]; from: string | null; to: string | null; lock: boolean; restore: boolean }) {
+  async function applyCheck(inputs: CaptureInput[], choice: CheckChoice) {
     setScopeReq(null);
     const label = inputs.map((i) => i.label).join(" + ");
     let result: Analysis | null = null;
     await run(
       "enum",
       async (p) => {
-        p("Checking captures…", 0, 0);
-        let pairs: ReturnType<typeof buildPairTeams> = [];
-        try { pairs = buildPairTeams(await fetchPairingsRaw(), m.enumerators); } catch { /* partner notes are optional */ }
-        const a = analyzeCaptures({ inputs, m, scope: { feeders: choice.feeders, from: choice.from, to: choice.to }, pairs });
-        if (!a.stats.inScope && !a.issues.length)
-          throw new Error(`Nothing to import: none of the ${a.stats.rowsRead.toLocaleString()} rows were on the chosen feeders and dates${a.stats.ignoredNotInLookup ? ` (${a.stats.ignoredNotInLookup.toLocaleString()} are on feeders that are not in your lookup)` : ""}.`);
-
-        const legacy = m.submissions.filter((x) => x.day == null).map((x) => x.id);
-        if (legacy.length) await removeMany("submissions", legacy, (d, t) => p("Removing old-format captures", d, t));
-        if (a.groups.length)
-          await upsertMany("submissions", a.groups, (g) => g.id, (d, t) => p("Saving captures", d, t));
-        if (a.issues.length)
-          await upsertMany(
-            "capture_issues",
-            a.issues.map(({ key, ...v }) => ({ ...v, upload: v.upload, _key: key })),
-            (g) => g._key,
-            (d, t) => p("Saving flagged captures", d, t),
-          );
-
-        // Self-assign: a DT nobody was assigned on the app, but a staff member captured on it.
-        const uid = auth().currentUser?.uid ?? null;
-        const today = new Date().toISOString().slice(0, 10);
-        if (a.selfAssign.length)
-          await addMany(
-            "allocations",
-            a.selfAssign.map((s) => ({
-              dt_id: s.dt.dt_id, enumerator_id: s.enumerator.id, allocated_on: (s.first ?? today).slice(0, 10), due_date: null,
-              notes: "Self-assigned: captured on this DT before it was assigned on the app. Awaiting authorization.",
-              allocated_by: uid, status: "active", completed_on: null, self_assigned: true, authorized: false,
-            })),
-            (d, t) => p("Self-assigning DTs", d, t),
-          );
-
-        // Remember every username on every DT it was captured on, and move self-assigned DTs to "assigned".
-        const selfDts = new Set(a.selfAssign.map((s) => s.dt.dt_id));
-        const patches: { id: string; patch: Record<string, any> }[] = [];
-        for (const [dtId, found] of a.workers) {
-          const dt = m.dtById.get(dtId);
-          if (!dt) continue;
-          const merged = mergeWorkers(dt.workers, found);
-          const changed = JSON.stringify(merged) !== JSON.stringify(dt.workers ?? []);
-          const assign = selfDts.has(dtId) && dt.status === "unassigned";
-          if (!changed && !assign) continue;
-          patches.push({ id: dt.id, patch: { workers: merged, ...(assign ? { status: "assigned", status_note: null, updated_at: new Date().toISOString() } : {}) } });
-        }
-        if (patches.length) await patchMany("dts", patches);
-        if (choice.lock)
-          await patchMany("feeders", choice.feeders.map((f) => m.feederById.get(f)).filter((f) => f && !f.locked).map((f) => ({ id: f!.id, patch: { locked: true } })));
-
-        await logUpload({
-          kind: "captures", filename: label, rows_read: a.stats.rowsRead, rows_with_dt: a.stats.withDt, saved: a.groups.length,
-          users: new Set(a.groups.map((g) => (g.username ?? "").toLowerCase())).size, dts: new Set(a.groups.filter((g) => g.dt_id).map((g) => g.dt_id)).size,
-          feeders: choice.feeders.length, date_from: choice.from ?? a.stats.dayMin, date_to: choice.to ?? a.stats.dayMax,
-          note: [a.issues.length && `${a.issues.length} flagged`, a.selfAssign.length && `${selfDts.size} DT(s) self-assigned`].filter(Boolean).join(" · ") || null,
-        });
-        result = a;
-        const s = a.stats;
-        return `Checked ${s.rowsRead.toLocaleString()} rows: ${s.inScope.toLocaleString()} on the chosen feeders, ${s.flagged.toLocaleString()} flagged, ${selfDts.size} DT${selfDts.size === 1 ? "" : "s"} self-assigned. ${(s.ignoredNotFocused + s.ignoredNotInLookup).toLocaleString()} rows on other feeders were left out.`;
+        result = await applyCaptureCheck({ m, inputs, choice, p });
+        return checkSummary(result);
       },
       choice.restore ? `Before captures check (${label})` : undefined,
     );
@@ -1123,169 +1057,5 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
       )}
       {checkReport && <CaptureReportDialog rep={checkReport} onClose={() => setCheckReport(null)} goTo={goTo} />}
     </div>
-  );
-}
-
-/* ---------- Which feeders and dates to check ---------- */
-function CaptureScopeDialog({
-  req, m, hasData, legacyCount, onCancel, onRun,
-}: {
-  req: { inputs: CaptureInput[]; scan: ReturnType<typeof scanFeeders> };
-  m: Model; hasData: boolean; legacyCount: number; onCancel: () => void;
-  onRun: (c: { feeders: string[]; from: string | null; to: string | null; lock: boolean; restore: boolean }) => void;
-}) {
-  const { scan } = req;
-  const inLookup = scan.feeders.filter((f) => f.inLookup);
-  const notIn = scan.feeders.filter((f) => !f.inLookup);
-  const locked = inLookup.filter((f) => m.feederById.get(f.feeder_id)?.locked).map((f) => f.feeder_id);
-  const [sel, setSel] = useState<Set<string>>(new Set(locked.length ? locked : inLookup.map((f) => f.feeder_id)));
-  const [mode, setMode] = useState<"all" | "range">("all");
-  const [from, setFrom] = useState(scan.dayMin ?? "");
-  const [to, setTo] = useState(scan.dayMax ?? "");
-  const [lock, setLock] = useState(false);
-  const [restore, setRestore] = useState(hasData);
-  const toggle = (id: string) => setSel((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const bad = mode === "range" && (!from || !to || from > to);
-  const labels = req.inputs.map((i) => `${i.source === "lt" ? "LT Pole" : "Customer Enumeration"}: ${i.rows.length.toLocaleString()} rows`).join(" · ");
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Which feeders and dates should I check?</DialogTitle>
-          <DialogDescription>{labels}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 text-sm">
-          <section>
-            <div className="mb-1 flex items-center justify-between">
-              <b>Feeders in your lookup that are in this data</b>
-              <span className="space-x-2 text-xs">
-                <button type="button" className="underline" onClick={() => setSel(new Set(inLookup.map((f) => f.feeder_id)))}>all</button>
-                <button type="button" className="underline" onClick={() => setSel(new Set())}>none</button>
-              </span>
-            </div>
-            {!inLookup.length && <p className="rounded border border-destructive p-2 text-destructive">None of the feeders in this data are in your feeder lookup, so there is nothing to check. Upload the lookup first.</p>}
-            <div className="max-h-48 divide-y overflow-y-auto rounded border">
-              {inLookup.map((f) => (
-                <label key={f.feeder_id} className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted">
-                  <input type="checkbox" checked={sel.has(f.feeder_id)} onChange={() => toggle(f.feeder_id)} />
-                  <span className="flex-1">{m.feederById.get(f.feeder_id)?.feeder_name ?? f.feeder_id} <span className="text-xs text-muted-foreground">({f.feeder_id})</span></span>
-                  {m.feederById.get(f.feeder_id)?.locked && <span className="rounded bg-warning/20 px-1 text-[10px] font-bold">LOCKED</span>}
-                  <span className="text-xs text-muted-foreground">{f.rows.toLocaleString()} rows</span>
-                </label>
-              ))}
-            </div>
-            {notIn.length > 0 && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Not in your lookup, so left out: {notIn.slice(0, 8).map((f) => `${f.feeder_id} (${f.rows.toLocaleString()})`).join(", ")}{notIn.length > 8 ? `, +${notIn.length - 8} more` : ""}. The one exception: a person working on the chosen feeders who captured on one of these is flagged as picking the wrong feeder.
-              </p>
-            )}
-          </section>
-          <section>
-            <b>Dates</b>
-            <div className="mt-1 space-y-1">
-              <label className="flex items-center gap-2"><input type="radio" checked={mode === "all"} onChange={() => setMode("all")} /> Every date in the data{scan.dayMin ? ` (${scan.dayMin} to ${scan.dayMax})` : ""}</label>
-              <label className="flex items-center gap-2"><input type="radio" checked={mode === "range"} onChange={() => setMode("range")} /> Only these dates</label>
-              {mode === "range" && (
-                <div className="ml-6 flex flex-wrap items-center gap-2">
-                  <input type="date" className="rounded border px-2 py-1" value={from} onChange={(e) => setFrom(e.target.value)} />
-                  <span>to</span>
-                  <input type="date" className="rounded border px-2 py-1" value={to} onChange={(e) => setTo(e.target.value)} />
-                </div>
-              )}
-            </div>
-          </section>
-          <section className="space-y-1">
-            <label className="flex items-start gap-2"><input type="checkbox" className="mt-1" checked={lock} onChange={(e) => setLock(e.target.checked)} /><span>Also <b>lock</b> the chosen feeders, so later captures on unallocated DTs keep being flagged in Capture Alerts</span></label>
-            {hasData && <label className="flex items-start gap-2"><input type="checkbox" className="mt-1" checked={restore} onChange={(e) => setRestore(e.target.checked)} /><span>Keep a restore point first (lets you undo this upload, uses extra space)</span></label>}
-            {legacyCount > 0 && <p className="text-xs text-muted-foreground">{legacyCount.toLocaleString()} old per-capture records will be replaced so nothing is counted twice.</p>}
-          </section>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button disabled={!sel.size || bad} onClick={() => onRun({ feeders: [...sel], from: mode === "range" ? from : null, to: mode === "range" ? to : null, lock, restore })}>
-            Check {sel.size} feeder{sel.size === 1 ? "" : "s"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ---------- What the check found ---------- */
-const REPORT_GROUPS: { kinds: ReportKind[]; title: string; hint: string }[] = [
-  { kinds: ["self_assigned"], title: "Self-assigned DTs: captured, but not assigned on the app", hint: "Each was assigned to whoever captured it and now waits for you to authorize it in DT Allocation." },
-  { kinds: ["other_holder"], title: "Captured on a DT assigned to someone else", hint: "Includes team partners who picked a DT that is not assigned to them." },
-  { kinds: ["wrong_feeder"], title: "Captured on a feeder that is not in the lookup", hint: "By people who work on the chosen feeders." },
-  { kinds: ["not_on_staff"], title: "Usernames not on the staff list", hint: "Resolve them in Capture Alerts. Their username stays on the DT either way." },
-  { kinds: ["after_completed", "not_allocated", "dt_not_in_lookup", "feeder_mismatch"], title: "Other problems", hint: "" },
-];
-const KIND_LABEL: Record<ReportKind, string> = {
-  self_assigned: "Self-assigned", other_holder: "Someone else's DT", not_on_staff: "Not on staff list", wrong_feeder: "Wrong feeder",
-  dt_not_in_lookup: "DT not in lookup", feeder_mismatch: "Feeder mismatch", after_completed: "After completed", not_allocated: "Not allocated",
-};
-
-function CaptureReportDialog({ rep, onClose, goTo }: { rep: { a: Analysis; label: string; feeders: string[]; from: string | null; to: string | null }; onClose: () => void; goTo: ((t: string) => void) | undefined }) {
-  const { a } = rep;
-  const s = a.stats;
-  const exportFlagged = () =>
-    downloadSheet(
-      "flagged_captures",
-      a.issues.map((i) => ({
-        FID: i.fid ?? "", "DT ID": i.dt_id ?? "", "Feeder ID": i.feeder_id ?? "", "Building code": i.building_code ?? "", "Structure no": i.structure_no ?? "",
-        "Customer no": i.customer_no ?? "", "Call back form no": i.call_back_form_no ?? "", Username: i.username ?? "", Reason: i.reason, "Captured at": i.captured_at ?? "",
-        Source: i.source === "lt" ? "LT Pole" : "Customer Enumeration",
-      })),
-      ["FID", "DT ID", "Feeder ID", "Building code", "Structure no", "Customer no", "Call back form no", "Username", "Reason", "Captured at", "Source"],
-    );
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Check finished</DialogTitle>
-          <DialogDescription>
-            {s.rowsRead.toLocaleString()} rows read · {s.inScope.toLocaleString()} on {rep.feeders.length} chosen feeder{rep.feeders.length === 1 ? "" : "s"} · {(s.ignoredNotFocused + s.ignoredNotInLookup).toLocaleString()} on other feeders left out{s.ignoredDates ? ` · ${s.ignoredDates.toLocaleString()} outside the dates` : ""} · {a.issues.length.toLocaleString()} flagged
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 text-sm">
-          {REPORT_GROUPS.map((g) => {
-            const rows = a.report.filter((r) => g.kinds.includes(r.kind));
-            if (!rows.length) return null;
-            return (
-              <section key={g.title}>
-                <h3 className="font-bold">{g.title} <span className="font-normal text-muted-foreground">({rows.length})</span></h3>
-                {g.hint && <p className="text-xs text-muted-foreground">{g.hint}</p>}
-                <div className="mt-1 max-h-52 overflow-auto rounded border">
-                  <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-muted text-left"><tr><th className="p-2">DT</th><th>Feeder</th><th>Captured by</th><th>Captures</th><th></th></tr></thead>
-                    <tbody>
-                      {rows.map((r, i) => (
-                        <tr key={i} className="border-t align-top">
-                          <td className="p-2 font-semibold">{r.dt_name ?? r.dt_id ?? "—"}<div className="font-normal text-muted-foreground">{r.dt_id ?? ""}</div></td>
-                          <td>{r.feeder_id ?? "—"}</td>
-                          <td>{r.users.join(", ") || "—"}</td>
-                          <td className="font-bold">{r.count}</td>
-                          <td>
-                            {r.holders.length > 0 && <div>Assigned to {r.holders.join(", ")}</div>}
-                            {r.partner && <span className="rounded bg-warning/30 px-1 font-bold">team partner</span>}
-                            {g.kinds.length > 1 && <span className="text-muted-foreground">{KIND_LABEL[r.kind]}</span>}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            );
-          })}
-          {!a.report.length && <p className="rounded border p-3">Nothing was flagged: every capture on the chosen feeders was on a DT assigned to the person who captured it.</p>}
-        </div>
-        <DialogFooter className="gap-2">
-          {a.issues.length > 0 && <Button variant="outline" onClick={exportFlagged}><Download /> Download flagged captures</Button>}
-          {goTo && a.selfAssign.length > 0 && <Button variant="outline" onClick={() => { onClose(); goTo("allocation"); }}>Open DT Allocation to authorize</Button>}
-          <Button onClick={onClose}>Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

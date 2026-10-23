@@ -4,7 +4,7 @@ import { Lock, MessageCircle, Unlock } from "lucide-react";
 import { addRow, patchMany, removeMany, updateRow } from "@/lib/field/db";
 import { teamMatches, usePairTeams } from "@/lib/field/pairings";
 import { auth } from "@/lib/field/firebase";
-import { activeAllocs, DT_STATUSES, feederStats, fmtDate, isPrivateDt, openDtsByEnumerator, useRefresh, waLink, type DT, type Model, SELF_ASSIGNED_REASON, type Capturer } from "@/lib/field/data";
+import { activeAllocs, DT_STATUSES, feederStats, fmtDate, isPrivateDt, openDtsByEnumerator, useRefresh, waLink, type DT, type Model, SELF_ASSIGNED_REASON, LEFT_ONGOING_REASON, ALLOCATION_REASONS, type Capturer } from "@/lib/field/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -124,7 +124,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
       await patchMany("allocations", pend.map((a) => ({ id: a.id, patch: { authorized: true } })));
       // captures flagged only for being self-assigned are fine now
       const who = new Set(pend.map((a) => `${a.dt_id}|${(m.enumById.get(a.enumerator_id)?.username ?? "").trim().toLowerCase()}`));
-      const clear = m.capture_issues.filter((i) => i.reason === SELF_ASSIGNED_REASON && who.has(`${i.dt_id}|${(i.username ?? "").trim().toLowerCase()}`)).map((i) => i.id);
+      const clear = m.capture_issues.filter((i) => ALLOCATION_REASONS.includes(i.reason) && who.has(`${i.dt_id}|${(i.username ?? "").trim().toLowerCase()}`)).map((i) => i.id);
       if (clear.length) await removeMany("capture_issues", clear);
     } catch (e: any) { setBulkBusy(false); return toast.error(e.message); }
     setSel(new Set());
@@ -142,7 +142,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
       const left = activeAllocs(m, d.dt_id).filter((a) => !pend.some((p) => p.id === a.id));
       if (!left.length) await updateRow("dts", d.id, { status: "unassigned", updated_at: new Date().toISOString() });
       const who = new Set(pend.map((a) => (m.enumById.get(a.enumerator_id)?.username ?? "").trim().toLowerCase()));
-      const flagged = m.capture_issues.filter((i) => i.reason === SELF_ASSIGNED_REASON && i.dt_id === d.dt_id && who.has((i.username ?? "").trim().toLowerCase()));
+      const flagged = m.capture_issues.filter((i) => (i.reason === SELF_ASSIGNED_REASON || i.reason === LEFT_ONGOING_REASON) && i.dt_id === d.dt_id && who.has((i.username ?? "").trim().toLowerCase()));
       // Only admins may edit flagged captures; for anyone else the allocation change above still stands.
       if (flagged.length) await patchMany("capture_issues", flagged.map((i) => ({ id: i.id, patch: { reason: "DT not allocated to anyone" } }))).catch(() => 0);
     } catch (e: any) { setBulkBusy(false); return toast.error(e.message); }
@@ -295,7 +295,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
             </select>
             <Input className="w-full sm:w-56" placeholder="Search DT name or ID" value={q} onChange={(e) => setQ(e.target.value)} />
             <div className="inline-flex overflow-hidden rounded-md border text-sm font-bold" role="group" aria-label="Assigned or not assigned">
-              {([["all", "All", stats.total], ["assigned", "Assigned", stats.assigned], ["pending", "Not assigned", stats.unassigned], ...(needAuthCount ? [["needsauth", "Needs authorization", needAuthCount] as const] : [])] as const).map(([v, label, n]) => (
+              {([["all", "All", stats.total], ["assigned", "Assigned (Ongoing)", stats.assigned], ["pending", "Not assigned", stats.unassigned], ...(needAuthCount ? [["needsauth", "Needs authorization", needAuthCount] as const] : [])] as const).map(([v, label, n]) => (
                 <button key={v} type="button" onClick={() => setStatusF(v)} className={"px-3 py-1.5 " + (statusF === v ? "bg-foreground text-background" : "hover:bg-muted")}>{label} <span className="opacity-70">{n}</span></button>
               ))}
             </div>
@@ -349,7 +349,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
                   ); }) : <span className="text-muted-foreground">No one assigned</span>}
                 </div>
                 <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-                  <span>{last ? `From ${fmtDate(last.allocated_on)}${last.due_date ? ` · due ${fmtDate(last.due_date)}` : ""}` : ""}</span>
+                  <span>{last ? `From ${fmtDate(last.allocated_on)}${last.due_date ? ` · due ${fmtDate(last.due_date)}` : ""}${last.last_worked_on ? ` · worked ${fmtDate(last.last_worked_on)}` : ""}` : ""}</span>
                   <span className={caps ? "font-bold text-foreground" : "font-bold text-destructive"}>{caps} captures</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 [&>*]:min-h-10 [&>*]:flex-1">{actions(d)}</div>
@@ -384,7 +384,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
                     <td className="text-xs">
                       {names.length ? names.map((e) => <div key={e!.id}>{staffName({ enumId: e!.id, dtId: d.dt_id })}</div>) : "—"}
                     </td>
-                    <td className="text-xs">{last ? <>{fmtDate(last.allocated_on)}{last.due_date && <div className="text-muted-foreground">due {fmtDate(last.due_date)}</div>}{last.completed_on && <div className="text-muted-foreground">done {fmtDate(last.completed_on)}</div>}</> : "—"}</td>
+                    <td className="text-xs">{last ? <>{fmtDate(last.allocated_on)}{last.last_worked_on && <div className="font-semibold text-success">worked {fmtDate(last.last_worked_on)}</div>}{last.due_date && <div className="text-muted-foreground">due {fmtDate(last.due_date)}</div>}{last.completed_on && <div className="text-muted-foreground">done {fmtDate(last.completed_on)}</div>}</> : "—"}</td>
                     <td className={"font-bold " + (caps ? "" : "text-destructive")}>{caps}</td>
                     <td className="pr-3"><div className="flex flex-wrap justify-end gap-1">{actions(d)}</div></td>
                   </tr>
@@ -400,7 +400,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
         <div className="rounded-lg bg-sidebar p-4 text-sidebar-foreground">
           <div className="text-xs uppercase tracking-wider text-sidebar-foreground/70">{feeder?.feeder_name}</div>
           <div className="mt-2 grid grid-cols-2 gap-3 text-center">
-            <div><div className="font-display text-5xl font-extrabold text-success">{stats.assigned}</div><div className="text-xs font-bold uppercase">Assigned</div></div>
+            <div><div className="font-display text-5xl font-extrabold text-success">{stats.assigned}</div><div className="text-xs font-bold uppercase">Assigned</div><div className="text-[11px] font-semibold opacity-80">(Ongoing)</div></div>
             <div><div className="font-display text-5xl font-extrabold text-destructive">{stats.unassigned}</div><div className="text-xs font-bold uppercase">Not assigned</div></div>
           </div>
           <div className="mt-3 h-3 overflow-hidden rounded-full bg-sidebar-accent flex">

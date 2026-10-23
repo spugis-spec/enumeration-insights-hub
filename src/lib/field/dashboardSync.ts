@@ -11,7 +11,8 @@ const toText = (v: unknown): string | null => {
   return s === "" ? null : s;
 };
 
-function toRows(raw: unknown): Record<string, string | null>[] {
+/** Turns rows from the cloud (or sent by the Dashboard) into plain text values. */
+export function toRows(raw: unknown): Record<string, string | null>[] {
   const list: unknown[] = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? Object.values(raw as object) : [];
   return list
     .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")

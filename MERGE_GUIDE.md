@@ -81,3 +81,12 @@ The tool's own libraries (JSZip, PapaParse) are served from `public/legacy/merge
 - **Partners.** A capture on a DT that is assigned to someone else is flagged, and marked as a team partner when the Dashboard pairing says so.
 - **Who worked on a DT.** Every username that captured on a DT is kept against it, shown under the DT as "Captured by", even after the person left: supervisors in blue, people resolved as left struck through with the reason, people not on the staff list in red, self-assigned in amber. Clearing captures does not erase this.
 - No Firebase rule changes are needed for this.
+
+## Push from the Dashboard, Ongoing status, flags and details
+
+- **Push to Field Manager.** In Dashboard > Upload Data Files, after uploading (or attaching) Customer Enumeration and LT Pole data, the **📤 Push LT Pole & Customer data to Field Manager** button sends them to the Field Manager. A window opens on top of the Dashboard (your uploaded data stays loaded): the report date from the date boxes is already filled in, you choose the feeders, and it runs the check. You must be signed in as a Field Manager admin.
+- **What the push does.** It confirms which assigned staff worked on their own DT for those dates (the DT then shows "worked <date>"), remembers every username on each DT, self-assigns DTs nobody had assigned, and flags the rest. The summary lists it all.
+- **Ongoing.** "Assigned" is shown everywhere as **Assigned (Ongoing)**; the big count on a feeder has "(Ongoing)" under "Assigned". Completed and the other statuses are unchanged.
+- **New flag: "Has an ongoing DT but captured on a different DT."** When someone's own DT is not complete and they capture on another DT, it is flagged with the DT they should be on (the **correct DT**). The other DT is still self-assigned to them, awaiting authorization.
+- **Capture Alerts > Check capture alerts.** Rows show the DT by its full name. **Details** on a row (or **Show all details** for a person) reveals the wrong DT, the correct DT, FID, structure no. (LT), building code, customer no. and call-back form.
+- **Flags clear themselves.** Once the DT is allocated (individually or to a team) or the self-assignment is authorized, the matching flags disappear from the list without any extra step.

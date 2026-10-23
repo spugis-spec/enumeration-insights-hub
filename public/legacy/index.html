@@ -850,6 +850,7 @@
                         <button id="generateReportBtn" onclick="generateReport()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-colors flex items-center justify-center gap-2"><span>📊</span> Generate Report</button>
                         <button onclick="exportToExcel()" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-colors flex items-center justify-center gap-2"><span>📥</span> Export Excel</button>
                         <button onclick="clearAll()" class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-colors">Clear All</button>
+                        <button id="pushToFmBtn" onclick="pushToFieldManager()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-colors" title="Sends the LT Pole and Customer Enumeration data to the Field Manager: it confirms who worked, updates assigned DTs and flags wrong captures (see Capture Alerts)">📤 Push LT Pole &amp; Customer data to Field Manager</button>
                     </div>
                 </div>
                 <div class="bg-white rounded-xl shadow-md p-6">
@@ -5923,6 +5924,19 @@
     function goToDashboardFromUpload() {
         switchTab('dashboard');
         window.scrollTo({top:0, behavior:'smooth'});
+    }
+
+    // Sends the loaded Customer Enumeration and LT Pole rows (and the report date) to the Field Manager in the main app.
+    function pushToFieldManager(){
+        const cust=(uploadedData.cust||[]), lt=(uploadedData.lt||[]);
+        if(!cust.length && !lt.length){ showStatus('Upload Customer Enumeration and/or LT Pole data first.','warning'); return; }
+        if(window.parent===window){ showStatus('Open the Dashboard inside the main app to push to the Field Manager.','warning'); return; }
+        // Dates keep the time exactly as shown (no time-zone shift), so a capture stays on its own day.
+        const wall=d=>new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate(),d.getHours(),d.getMinutes(),d.getSeconds())).toISOString();
+        const clean=rows=>rows.map(r=>{const o={};for(const k in r){const v=r[k];o[k]=v instanceof Date?(isNaN(v)?null:wall(v)):(v===undefined?null:v);}return o;});
+        const s=(document.getElementById('startDate')||{}).value||'', e=(document.getElementById('endDate')||{}).value||'';
+        window.parent.postMessage({type:'dashboard-push-captures',customer:clean(cust),lt:clean(lt),from:s||null,to:(e||s)||null},window.location.origin);
+        showStatus('Sent to the Field Manager. Choose the feeders on the screen that opens.','info');
     }
 
     function showStatus(message, type='info'){

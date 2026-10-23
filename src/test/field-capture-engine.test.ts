@@ -84,8 +84,10 @@ describe("self-assignment", () => {
   it("self-assigns a DT nobody was assigned, to whoever captured it, and flags it for authorization", () => {
     const a = analyzeCaptures({ inputs: [cust([row("ada", "D3"), row("ada", "D3"), row("chi", "D3")])], m: model(), scope: scope() });
     expect(a.selfAssign.map((s) => [s.dt.dt_id, s.enumerator.username, s.count]).sort()).toEqual([["D3", "ada", 2], ["D3", "chi", 1]]);
-    expect(a.issues.every((i) => i.reason === SELF_ASSIGNED_REASON)).toBe(true);
-    expect(a.report[0]).toMatchObject({ kind: "self_assigned" });
+    // chi has nothing ongoing: plain self-assigned. ada still has D2 ongoing: the more useful flag.
+    expect(a.issues.filter((i) => i.username === "chi").every((i) => i.reason === SELF_ASSIGNED_REASON)).toBe(true);
+    expect(a.issues.filter((i) => i.username === "ada").every((i) => i.reason === "Has an ongoing DT but captured on a different DT")).toBe(true);
+    expect(a.report.map((r) => r.kind).sort()).toEqual(["left_ongoing", "self_assigned"]);
   });
   it("does not assign again once the self-assigned allocation exists, but keeps flagging until authorized", () => {
     const pending = { self_assigned: true, authorized: false };
@@ -132,5 +134,42 @@ describe("who worked on a DT", () => {
     const merged = mergeWorkers([{ username: "old", first: "2026-09-01", last: "2026-09-05" }], [{ username: "Old", first: "2026-08-30", last: "2026-10-01" }, { username: "new", first: null, last: null }]);
     expect(merged).toHaveLength(2);
     expect(merged.find((w) => w.username === "old")).toMatchObject({ first: "2026-08-30", last: "2026-10-01" });
+  });
+});
+
+describe("ongoing DTs, confirmation and automatic clearing", () => {
+  it("flags someone who still has an ongoing DT but captured on a different one, and says which DT they should be on", () => {
+    const m = model(); // ada is allocated D2 (ongoing); D3 is nobody's
+    const a = analyzeCaptures({ inputs: [cust([row("ada", "D3")])], m, scope: scope() });
+    expect(a.issues[0]).toMatchObject({ reason: "Has an ongoing DT but captured on a different DT", dt_id: "D3", correct_dt: "D2" });
+    expect(a.selfAssign.map((s) => s.dt.dt_id)).toEqual(["D3"]); // still recorded as self-assigned, awaiting authorization
+    expect(a.report[0]).toMatchObject({ kind: "left_ongoing" });
+  });
+  it("does not flag that once the earlier DT is completed", () => {
+    const m = model({ allocations: [al("D1", "e2"), al("D2", "e1", { status: "completed", completed_on: "2026-10-01" })], dts: [dt("D1", "F1", { status: "assigned" }), dt("D2", "F1", { status: "completed" }), dt("D3")] });
+    const a = analyzeCaptures({ inputs: [cust([row("ada", "D3")])], m, scope: scope() });
+    expect(a.issues[0]!.reason).toBe(SELF_ASSIGNED_REASON);
+  });
+  it("names the correct DT on a capture made on a DT someone else holds", () => {
+    const a = analyzeCaptures({ inputs: [cust([row("ada", "D1")])], m: model(), scope: scope() });
+    expect(a.issues[0]).toMatchObject({ reason: "DT allocated to someone else", correct_dt: "D2" });
+  });
+  it("confirms assigned staff who captured on their own DT, per date, and remembers when they last worked", () => {
+    const a = analyzeCaptures({ inputs: [cust([row("ada", "D2", { time: "2026-10-12 09:00:00" }), row("ada", "D2", { time: "2026-10-13 09:00:00" }), row("bayo", "D1")])], m: model(), scope: scope() });
+    expect(a.issues).toHaveLength(0);
+    expect(a.confirmed.find((c) => c.dt_id === "D2")).toMatchObject({ users: ["ada"], days: ["2026-10-12", "2026-10-13"], count: 2 });
+    expect(a.worked.find((w) => w.allocId === "D2-e1")!.last).toBe("2026-10-13");
+    expect(a.confirmed).toHaveLength(2);
+  });
+  it("hides a flagged capture automatically once the DT is allocated or authorized to that person", () => {
+    const issue = { id: "i1", username: "ada", feeder_id: "F1", dt_id: "D3", captured_at: null, reason: SELF_ASSIGNED_REASON, call_back_form_no: null, customer_no: null, building_code: null, upload: "x" };
+    const pending = model({ capture_issues: [issue], allocations: [al("D1", "e2"), al("D3", "e1", { self_assigned: true, authorized: false })] });
+    expect(pending.capture_issues).toHaveLength(1);
+    const authorized = model({ capture_issues: [issue], allocations: [al("D1", "e2"), al("D3", "e1", { self_assigned: true, authorized: true })] });
+    expect(authorized.capture_issues).toHaveLength(0);
+    const teamAllocated = model({ capture_issues: [{ ...issue, reason: "DT allocated to someone else" }], allocations: [al("D3", "e1")] });
+    expect(teamAllocated.capture_issues).toHaveLength(0);
+    const other = model({ capture_issues: [{ ...issue, username: "chi" }], allocations: [al("D3", "e1")] });
+    expect(other.capture_issues).toHaveLength(1); // someone else's allocation does not clear chi's flag
   });
 });
