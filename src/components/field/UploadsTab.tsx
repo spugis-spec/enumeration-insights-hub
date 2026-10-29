@@ -1055,7 +1055,7 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
           onCancel={() => setScopeReq(null)} onRun={(choice) => void applyCheck(scopeReq.inputs, choice)}
         />
       )}
-      {checkReport && <CaptureReportDialog rep={checkReport} onClose={() => setCheckReport(null)} goTo={goTo} />}
+      {checkReport && <CaptureReportDialog rep={checkReport} m={m} onCompleted={() => void refresh()} onClose={() => setCheckReport(null)} goTo={goTo} />}
     </div>
   );
 }

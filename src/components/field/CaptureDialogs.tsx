@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { Download } from "lucide-react";
 import type { Analysis, CaptureInput, ReportKind, scanFeeders } from "@/lib/field/captureEngine";
 import type { Model } from "@/lib/field/data";
+import { completeDts } from "@/lib/field/complete";
+import type { StaleResult } from "@/lib/field/stale";
 import { downloadSheet } from "@/lib/field/dataTools";
 import type { CheckChoice } from "@/lib/field/captureRun";
 import { Button } from "@/components/ui/button";
@@ -110,7 +113,7 @@ const KIND_LABEL: Record<ReportKind, string> = {
   dt_not_in_lookup: "DT not in lookup", feeder_mismatch: "Feeder mismatch", after_completed: "After completed", not_allocated: "Not allocated",
 };
 
-export function CaptureReportDialog({ rep, onClose, goTo }: { rep: { a: Analysis; label: string; feeders: string[]; from: string | null; to: string | null }; onClose: () => void; goTo: ((t: string) => void) | undefined }) {
+export function CaptureReportDialog({ rep, onClose, goTo, m, onCompleted }: { rep: { a: Analysis; label: string; feeders: string[]; from: string | null; to: string | null }; onClose: () => void; goTo: ((t: string) => void) | undefined; m: Model; onCompleted?: () => void }) {
   const { a } = rep;
   const s = a.stats;
   const exportFlagged = () =>
@@ -133,6 +136,7 @@ export function CaptureReportDialog({ rep, onClose, goTo }: { rep: { a: Analysis
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 text-sm">
+          <StaleSection stale={a.stale} m={m} onCompleted={onCompleted} />
           {a.confirmed.length > 0 && (
             <section>
               <h3 className="font-bold text-success">Confirmed working: assigned staff who captured on their own DT <span className="font-normal text-muted-foreground">({a.confirmed.length})</span></h3>
@@ -190,5 +194,58 @@ export function CaptureReportDialog({ rep, onClose, goTo }: { rep: { a: Analysis
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+const short = (d: string) => new Date(d + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" });
+
+/** Ongoing DTs that stopped showing up in captures: offered for completion. */
+export function StaleSection({ stale, m, onCompleted }: { stale: StaleResult; m: Model; onCompleted?: (() => void) | undefined }) {
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(stale.stale.map((x) => x.dt.dt_id)));
+  const [done, setDone] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const rows = stale.stale.filter((x) => !done.has(x.dt.dt_id));
+  if (!stale.enough) return stale.note ? <p className="rounded border p-2 text-xs text-muted-foreground">{stale.note}</p> : null;
+  if (!rows.length && !done.size) return <p className="rounded border p-2 text-xs text-muted-foreground">Every ongoing DT showed up in the captures of {stale.days.map(short).join(", ")}, so none needs completing.</p>;
+  const chosen = rows.filter((x) => picked.has(x.dt.dt_id));
+  async function complete() {
+    setBusy(true);
+    try {
+      const n = await completeDts(m, chosen.map((x) => x.dt));
+      setDone((p) => new Set([...p, ...chosen.map((x) => x.dt.dt_id)]));
+      toast.success(`${n} DT${n === 1 ? "" : "s"} marked completed`);
+      onCompleted?.();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't mark them complete");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="rounded border border-warning bg-warning/10 p-3">
+      <h3 className="font-bold">⏱ {rows.length || "No"} ongoing DT{rows.length === 1 ? "" : "s"} did not show up in the last {stale.days.length} capture dates: mark as complete?</h3>
+      <p className="text-xs text-muted-foreground">
+        Dates checked: {stale.days.map(short).join(", ")}{stale.days.includes(stale.today) ? " (today included)" : ""}. A DT captured on any of them, including the current date, stays ongoing. Untick any that are still being worked.
+      </p>
+      {rows.length > 0 && (
+        <>
+          <div className="mt-2 max-h-52 overflow-auto rounded border bg-background">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-muted text-left"><tr><th className="p-2"><input type="checkbox" aria-label="Select all" checked={chosen.length === rows.length} onChange={(e) => setPicked(e.target.checked ? new Set(rows.map((x) => x.dt.dt_id)) : new Set())} /></th><th>DT</th><th>Feeder</th><th>Assigned to</th><th>Last capture</th></tr></thead>
+              <tbody>
+                {rows.map((x) => (
+                  <tr key={x.dt.dt_id} className="border-t align-top">
+                    <td className="p-2"><input type="checkbox" aria-label={`Select ${x.dt.dt_name || x.dt.dt_id}`} checked={picked.has(x.dt.dt_id)} onChange={() => setPicked((p) => { const n = new Set(p); if (n.has(x.dt.dt_id)) n.delete(x.dt.dt_id); else n.add(x.dt.dt_id); return n; })} /></td>
+                    <td className="font-semibold">{x.dt.dt_name || x.dt.dt_id}<div className="font-normal text-muted-foreground">{x.dt.dt_id}</div></td>
+                    <td>{x.feeder_id}</td><td>{x.holders.join(", ") || "—"}</td><td>{x.lastCapture ? short(x.lastCapture) : "never"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Button size="sm" className="mt-2" disabled={busy || !chosen.length} onClick={complete}>{busy ? "Saving…" : `Mark ${chosen.length} as complete`}</Button>
+        </>
+      )}
+      {done.size > 0 && <p className="mt-2 text-xs font-bold text-success">✓ {done.size} marked completed</p>}
+    </section>
   );
 }

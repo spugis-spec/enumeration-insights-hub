@@ -3,6 +3,8 @@ import { toast } from "sonner";
 import { Lock, MessageCircle, Unlock } from "lucide-react";
 import { addRow, patchMany, removeMany, updateRow } from "@/lib/field/db";
 import { teamMatches, usePairTeams } from "@/lib/field/pairings";
+import { completeDts } from "@/lib/field/complete";
+import { findStaleDts } from "@/lib/field/stale";
 import { auth } from "@/lib/field/firebase";
 import { activeAllocs, DT_STATUSES, feederStats, fmtDate, isPrivateDt, openDtsByEnumerator, useRefresh, waLink, type DT, type Model, SELF_ASSIGNED_REASON, LEFT_ONGOING_REASON, ALLOCATION_REASONS, type Capturer } from "@/lib/field/data";
 import { Button } from "@/components/ui/button";
@@ -41,6 +43,9 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
   const openByEnum = useMemo(() => openDtsByEnumerator(m), [m]);
   const feeder = m.feederById.get(feederId);
   const stats = feederStats(m, feederId);
+  // Ongoing DTs with no captures on any of the last 3 capture dates: probably finished.
+  const staleRes = useMemo(() => findStaleDts({ m, feeders: feederId ? [feederId] : null }), [m, feederId]);
+  const staleBy = useMemo(() => new Map(staleRes.stale.map((x) => [x.dt.dt_id, x])), [staleRes]);
   const rows = useMemo(() => {
     return m.dts
       .filter((d) => d.feeder_id === feederId)
@@ -49,11 +54,12 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
         if (statusF === "nocapture") return !(m.subsByDt.get(d.dt_id) ?? 0);
         if (statusF === "pending") return d.status === "unassigned";
         if (statusF === "needsauth") return m.pendingAuth.some((a) => a.dt_id === d.dt_id);
+        if (statusF === "stale") return staleBy.has(d.dt_id);
         return d.status === statusF;
       })
       .filter((d) => !q || `${d.dt_name} ${d.dt_id}`.toLowerCase().includes(q.toLowerCase()))
       .sort((a, b) => (a.status === "unassigned" ? -1 : 1) - (b.status === "unassigned" ? -1 : 1) || (a.dt_name ?? "").localeCompare(b.dt_name ?? ""));
-  }, [m, feederId, statusF, q]);
+  }, [m, feederId, statusF, q, staleBy]);
   const needAuthCount = new Set(m.pendingAuth.filter((a) => m.dtById.get(a.dt_id)?.feeder_id === feederId).map((a) => a.dt_id)).size;
 
   async function completeAlloc(dt: DT) {
@@ -71,19 +77,13 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
 
   /** Completes many DTs at once: closes their active allocations and marks the DTs completed. */
   async function bulkComplete(list: DT[]) {
-    const todo = list.filter((d) => d.status !== "completed");
-    if (!todo.length) return toast.message("Those DTs are already completed");
+    if (!list.some((d) => d.status !== "completed")) return toast.message("Those DTs are already completed");
     setBulkBusy(true);
-    const today = new Date().toISOString().slice(0, 10);
-    const now = new Date().toISOString();
-    try {
-      const allocs = todo.flatMap((d) => activeAllocs(m, d.dt_id));
-      await patchMany("allocations", allocs.map((a) => ({ id: a.id, patch: { status: "completed", completed_on: today } })));
-      await patchMany("dts", todo.map((d) => ({ id: d.id, patch: { status: "completed", updated_at: now } })));
-    } catch (e: any) { setBulkBusy(false); return toast.error(e.message); }
+    let n = 0;
+    try { n = await completeDts(m, list); } catch (e: any) { setBulkBusy(false); return toast.error(e.message); }
     setSel(new Set());
     setBulkBusy(false);
-    toast.success(`${todo.length} DT${todo.length > 1 ? "s" : ""} marked completed`);
+    toast.success(`${n} DT${n > 1 ? "s" : ""} marked completed`);
     refresh();
   }
 
@@ -167,6 +167,18 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
         <span className="rounded bg-warning/25 px-1.5 py-0.5 text-[10px] font-bold uppercase">Self-assigned · needs authorization</span>
         <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={bulkBusy} onClick={() => void authorize([d])}>Authorize</Button>
         <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive" disabled={bulkBusy} onClick={() => askReject(d)}>Reject</Button>
+      </div>
+    );
+  };
+
+  const staleTag = (dtId: string) => {
+    const x = staleBy.get(dtId);
+    if (!x) return null;
+    return (
+      <div className="mt-1">
+        <span className="rounded bg-warning/25 px-1.5 py-0.5 text-[10px] font-bold uppercase" title="Ongoing, but no captures on the most recent capture dates">
+          ⏱ Not seen {x.lastCapture ? `since ${new Date(x.lastCapture + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : "in captures"}: complete?
+        </span>
       </div>
     );
   };
@@ -295,7 +307,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
             </select>
             <Input className="w-full sm:w-56" placeholder="Search DT name or ID" value={q} onChange={(e) => setQ(e.target.value)} />
             <div className="inline-flex overflow-hidden rounded-md border text-sm font-bold" role="group" aria-label="Assigned or not assigned">
-              {([["all", "All", stats.total], ["assigned", "Assigned (Ongoing)", stats.assigned], ["pending", "Not assigned", stats.unassigned], ...(needAuthCount ? [["needsauth", "Needs authorization", needAuthCount] as const] : [])] as const).map(([v, label, n]) => (
+              {([["all", "All", stats.total], ["assigned", "Assigned (Ongoing)", stats.assigned], ["pending", "Not assigned", stats.unassigned], ...(needAuthCount ? [["needsauth", "Needs authorization", needAuthCount] as const] : []), ...(staleRes.stale.length ? [["stale", "Not seen 3 dates", staleRes.stale.length] as const] : [])] as const).map(([v, label, n]) => (
                 <button key={v} type="button" onClick={() => setStatusF(v)} className={"px-3 py-1.5 " + (statusF === v ? "bg-foreground text-background" : "hover:bg-muted")}>{label} <span className="opacity-70">{n}</span></button>
               ))}
             </div>
@@ -311,6 +323,15 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
           {feeder?.locked && <p className="mt-2 rounded bg-warning/20 p-2 text-xs font-bold">🔒 Locked: captures on DTs not allocated to the enumerator are flagged under Capture Alerts.</p>}
           {feeder && <p className="mt-2 text-xs text-muted-foreground">Area: {feeder.area ?? "—"} · Type: {feeder.feeder_type ?? "—"} · Start date: {fmtDate(feeder.start_date)}</p>}
         </Section>
+
+        {staleRes.stale.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning bg-warning/10 p-3 text-sm">
+            <span className="font-bold">⏱ {staleRes.stale.length} ongoing DT{staleRes.stale.length > 1 ? "s" : ""} did not show up in the last {staleRes.days.length} capture dates ({staleRes.days.map((d) => new Date(d + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })).join(", ")}).</span>
+            <span className="text-muted-foreground">If they are finished, mark them complete. DTs captured on any of those dates, including today, stay ongoing.</span>
+            <Button size="sm" variant="outline" onClick={() => setStatusF("stale")}>Review them</Button>
+            <Button size="sm" disabled={bulkBusy} onClick={() => askBulkComplete(staleRes.stale.map((x) => x.dt))}>Mark all {staleRes.stale.length} as complete</Button>
+          </div>
+        )}
 
         {selected.length > 0 && (
           <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 shadow">
@@ -339,6 +360,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
                     <div className="text-xs text-muted-foreground">{d.dt_id} · {d.dt_type}{isPrivateDt(d) ? " · private" : ""}</div>
                     <CapturerChips caps={m.capturersByDt.get(d.dt_id) ?? []} />
                     {authControls(d)}
+                    {staleTag(d.dt_id)}
                   </div>
                   {statusSelect(d)}
                 </div>
@@ -379,6 +401,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
                       {d.status_note && <div className="text-xs italic text-warning-foreground">{d.status_note}</div>}
                       <CapturerChips caps={m.capturersByDt.get(d.dt_id) ?? []} />
                       {authControls(d)}
+                      {staleTag(d.dt_id)}
                     </td>
                     <td>{statusSelect(d)}</td>
                     <td className="text-xs">
