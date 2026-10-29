@@ -90,3 +90,11 @@ The tool's own libraries (JSZip, PapaParse) are served from `public/legacy/merge
 - **New flag: "Has an ongoing DT but captured on a different DT."** When someone's own DT is not complete and they capture on another DT, it is flagged with the DT they should be on (the **correct DT**). The other DT is still self-assigned to them, awaiting authorization.
 - **Capture Alerts > Check capture alerts.** Rows show the DT by its full name. **Details** on a row (or **Show all details** for a person) reveals the wrong DT, the correct DT, FID, structure no. (LT), building code, customer no. and call-back form.
 - **Flags clear themselves.** Once the DT is allocated (individually or to a team) or the self-assignment is authorized, the matching flags disappear from the list without any extra step.
+
+## DTs that stopped showing up (suggest completing)
+
+- **When it runs.** After every capture check: a file upload in Data Uploads, "Check the Dashboard's upload", or the Dashboard's push button.
+- **The rule.** The three most recent capture dates (within the last 7 days of the newest capture) are looked at, using saved captures plus what was just uploaded. Customer and LT Pole captures both count, and so does a capture by someone other than the assigned person. An ongoing DT with no captures on **any** of those dates is listed. A DT captured on the current date, or on any one of the three dates, stays ongoing.
+- **Not listed:** DTs assigned inside the window, self-assigned DTs still waiting for authorization, completed and unassigned DTs. If the data has fewer than three recent capture dates, nothing is judged and the results say so.
+- **What you see.** The results window opens with "N ongoing DTs did not show up in the last 3 capture dates: mark as complete?" with each DT, feeder, who it is assigned to and when it was last seen. Untick any still being worked, then press **Mark N as complete**.
+- **Stays visible.** DT Allocation shows the same warning for the current feeder, a **Not seen 3 dates** filter, a tag on each such DT, and **Mark all as complete**.

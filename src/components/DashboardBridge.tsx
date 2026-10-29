@@ -91,7 +91,7 @@ function PushRun({ push, onClose }: { push: DashboardPush; onClose: () => void }
 
   if (stage === "running") return <Notice title="Checking captures…" body="Saving who worked, flags and assigned DTs. This can take a little while for large files." onClose={() => {}} />;
   if (stage === "report" && report)
-    return <CaptureReportDialog rep={report} onClose={onClose} goTo={() => { onClose(); void navigate({ to: "/field" }); }} />;
+    return <CaptureReportDialog rep={report} m={m} onCompleted={() => void refresh()} onClose={onClose} goTo={() => { onClose(); void navigate({ to: "/field" }); }} />;
   return (
     <CaptureScopeDialog
       req={{ inputs, scan: scan! }} m={m} hasData={m.submissions.length > 0} legacyCount={m.submissions.filter((x) => x.day == null).length}

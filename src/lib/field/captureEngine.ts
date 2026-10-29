@@ -4,6 +4,7 @@ import {
 } from "./data";
 import { parseCaptureTime } from "./dates";
 import type { PairTeam } from "./pairings";
+import { findStaleDts, type StaleResult } from "./stale";
 
 /**
  * Checks capture rows (Customer Enumeration and LT Pole files both carry a DT ID) against the feeder/DT lookup
@@ -41,6 +42,8 @@ export type Analysis = {
   confirmed: ConfirmedRow[];
   /** Allocation id -> latest day the assigned person worked on it. */
   worked: { allocId: string; last: string }[];
+  /** Ongoing DTs that have not shown up on the most recent capture dates: suggested to be marked complete. */
+  stale: StaleResult;
   stats: { rowsRead: number; inScope: number; withDt: number; ignoredNotFocused: number; ignoredNotInLookup: number; ignoredDates: number; flagged: number; dayMin: string | null; dayMax: string | null };
 };
 
@@ -124,7 +127,7 @@ export function scanFeeders(inputs: CaptureInput[], m: Model): { feeders: Feeder
   return { feeders, dayMin, dayMax, rows, withDt, sci, columns };
 }
 
-export function analyzeCaptures(opts: { inputs: CaptureInput[]; m: Model; scope: Scope; pairs?: PairTeam[] }): Analysis {
+export function analyzeCaptures(opts: { inputs: CaptureInput[]; m: Model; scope: Scope; pairs?: PairTeam[]; today?: string }): Analysis {
   const { inputs, m, scope } = opts;
   const focus = new Set(scope.feeders);
   const groups = new Map<string, Group>();
@@ -275,6 +278,7 @@ export function analyzeCaptures(opts: { inputs: CaptureInput[]; m: Model; scope:
     feeders: tally,
     confirmed: [...confirmedMap.values()].map((c) => ({ dt_id: c.dt.dt_id, dt_name: c.dt.dt_name, feeder_id: c.dt.feeder_id, users: [...c.users], days: [...c.days].sort(), count: c.count })).sort((a, b) => b.count - a.count),
     worked: [...workedMap].map(([allocId, last]) => ({ allocId, last })),
+    stale: findStaleDts({ m, extra: [...groups.values()].map((g) => ({ dt_id: g.dt_id, day: g.day })), feeders: scope.feeders, ...(opts.today ? { today: opts.today } : {}) }),
     stats: { ...stats, flagged: issues.size },
   };
 }
