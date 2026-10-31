@@ -1150,7 +1150,7 @@
                           </button>
                         </div>
 
-                        <div class="cc-eyebrow">📡 GIS Enumeration &amp; Asset Mapping · Daily Report</div>
+                        <div class="cc-eyebrow"><span class="cc-sig">📡</span><span class="cc-ebt">GIS Enumeration &amp; Asset Mapping · Daily Report</span></div>
                         <h2 class="gis-hero-title" id="dashboardDateHeader">&#128202; Enumeration Dashboard</h2>
                         <div class="gis-hero-rule"></div>
                         <p class="gis-hero-sub" id="dashboardDateSubheader"></p>
@@ -9594,7 +9594,7 @@ const CC_CSS = `
 #dashboardCapture.cc-on .gis-hero{background:radial-gradient(60% 90% at 6% 0%,#7c3aedcc,transparent),radial-gradient(50% 80% at 100% 8%,#ec4899b0,transparent),radial-gradient(60% 90% at 78% 115%,#06b6d4b0,transparent),#0b0720;box-shadow:0 18px 48px -18px #7c3aed,inset 0 0 0 1px #ffffff22}
 #dashboardCapture.cc-on .gis-hero-rule{background:linear-gradient(90deg,transparent,#22d3ee,#f472b6,#fbbf24,transparent);box-shadow:0 0 18px #f472b688}
 #dashboardCapture.cc-on .gis-hero-title{font-weight:800}
-.cc-eyebrow{font-weight:900;font-size:clamp(1.05rem,2.8vw,1.85rem);letter-spacing:.14em;text-transform:uppercase;margin:16px auto 0;line-height:1.2;background:linear-gradient(90deg,#67e8f9,#f9a8d4,#fde68a);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 2px 10px #00000066)}
+.cc-eyebrow{font-weight:900;font-size:clamp(1.05rem,2.8vw,1.85rem);letter-spacing:.14em;text-transform:uppercase;margin:16px auto 0;line-height:1.2;display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:.45em;filter:drop-shadow(0 2px 10px #00000066)}
 #ccRoot .live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px;animation:pl 1.6s infinite}
 @keyframes pl{50%{box-shadow:0 0 0 6px transparent;opacity:.5}}
 #ccRoot .seg button{background:var(--p);color:var(--mu);border:1px solid var(--ln);padding:6px 14px;cursor:pointer;font:inherit}
@@ -9691,6 +9691,12 @@ const CC_CSS = `
 #ccBg .ccbgsvg{position:sticky;top:0;display:block;width:100%;height:100vh;opacity:.8}
 body.cc-mode{background:#08051a!important}
 #ccRoot .grid{align-items:start}#ccRoot #ccNet svg{background:var(--p2);border-radius:10px}
+.cc-ebt{background:linear-gradient(90deg,#67e8f9,#f9a8d4,#fde68a);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.cc-sig{position:relative;display:inline-block;margin-right:.3em;animation:ccFloat 3s ease-in-out infinite;-webkit-text-fill-color:initial}
+.cc-sig::before,.cc-sig::after{content:'';position:absolute;left:50%;top:50%;width:1.3em;height:1.3em;margin:-.65em 0 0 -.65em;border-radius:50%;border:2px solid #22d3ee;opacity:0;pointer-events:none;animation:ccPing 2.4s ease-out infinite}
+.cc-sig::after{border-color:#f472b6;animation-delay:1.2s}
+@keyframes ccPing{0%{transform:scale(.5);opacity:.9}100%{transform:scale(2.8);opacity:0}}
+@keyframes ccFloat{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-3px) rotate(8deg)}}
 #ccRoot table{color:#e6edf7}#ccRoot th{background:#1c1650}#ccRoot .tools{align-items:center}
 .cc-svg{width:100%;max-height:380px;display:block}.cc-svg .nd{cursor:pointer;transition:opacity .2s}.cc-svg .nd:hover circle.c{filter:brightness(1.25)}
 .cc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px}
@@ -9809,8 +9815,8 @@ function renderFeederNetwork(entries, s, e) {
   });
   let h = `<svg viewBox="0 0 600 370" class="cc-svg" role="img" aria-label="Feeder network"><defs><radialGradient id="ccG"><stop offset="0" stop-color="#22d3ee" stop-opacity=".35"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></radialGradient></defs>`;
   [55, 105, 160].forEach(r => h += `<ellipse cx="${cx}" cy="${cy}" rx="${r * 1.35}" ry="${r * .85}" fill="none" stroke="#ffffff22" stroke-dasharray="3 5"/>`);
-  nodes.forEach(nd => h += `<line x1="${cx}" y1="${cy}" x2="${nd.x.toFixed(1)}" y2="${nd.y.toFixed(1)}" stroke="${nd.c}" stroke-opacity=".6" stroke-width="${1 + Math.min(4, nd.d.total / 150)}" stroke-dasharray="6 4"/>`);
-  h += `<circle cx="${cx}" cy="${cy}" r="26" fill="url(#ccG)"/><circle cx="${cx}" cy="${cy}" r="9" fill="#22d3ee"/><text x="${cx}" y="${cy + 24}" text-anchor="middle" font-size="10" fill="#c4b5fd">AEDC GRID · ABUJA</text>`;
+  nodes.forEach(nd => h += `<line x1="${cx}" y1="${cy}" x2="${nd.x.toFixed(1)}" y2="${nd.y.toFixed(1)}" stroke="${nd.c}" stroke-opacity=".6" stroke-width="${1 + Math.min(4, nd.d.total / 150)}" stroke-dasharray="6 4"><animate attributeName="stroke-dashoffset" from="20" to="0" dur="1.5s" repeatCount="indefinite"/></line>`);
+  h += `<circle cx="${cx}" cy="${cy}" r="26" fill="url(#ccG)"/><circle cx="${cx}" cy="${cy}" r="9" fill="#22d3ee"/><circle cx="${cx}" cy="${cy}" r="9" fill="none" stroke="#22d3ee" stroke-width="2"><animate attributeName="r" values="9;48" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".9;0" dur="2.4s" repeatCount="indefinite"/></circle><circle cx="${cx}" cy="${cy}" r="9" fill="none" stroke="#f472b6" stroke-width="2"><animate attributeName="r" values="9;48" dur="2.4s" begin="1.2s" repeatCount="indefinite"/><animate attributeName="opacity" values=".9;0" dur="2.4s" begin="1.2s" repeatCount="indefinite"/></circle><text x="${cx}" y="${cy + 24}" text-anchor="middle" font-size="10" fill="#c4b5fd">AEDC GRID · ABUJA</text>`;
   nodes.forEach(nd => {
     const dim = ccSel && ccSel !== nd.f, sel = ccSel === nd.f, lab = nd.f.length > 26 ? nd.f.slice(0, 25) + '…' : nd.f;
     h += `<g class="nd" data-f="${esc(nd.f)}" onclick="ccPick(this.dataset.f)" opacity="${dim ? .3 : 1}"><title>${esc(nd.f)} · ${nd.d.total} captures · ${nd.dts.length} DTs</title>`
@@ -9916,11 +9922,11 @@ function ccRenderAll() {
 <div class="grid">
 <div class="card"><h2>Feeder network · tap a node to filter <span id="ccHint" class="cc-hint no-print"></span></h2><div id="ccNet"></div><div class="legend"><span>Node size = captures</span><span>Colours = feeders</span><span>Schematic layout, not to scale</span></div><div class="cc-grid" id="ccDetail"></div></div>
 <div class="card"><h2 id="ccLbT">Leaderboard</h2><div id="ccLb"></div></div>
-<div class="card alert"><h2>⚠ Unauthorized mapping</h2><div id="ccAl1"></div></div>
-<div class="card alert" style="border-color:var(--wa)"><h2>📄 Call-back form audit</h2><div id="ccAl2"></div></div>
-<div class="card" style="grid-column:1/-1"><h2 id="ccAttT">Attendance</h2><div class="chips" id="ccCh"></div></div>
-<div class="card" id="ccAl3c" style="grid-column:1/-1"><h2>📣 Issue log reminder</h2><div id="ccAl3"></div></div>
-<div class="card" style="grid-column:1/-1"><h2>Staff performance breakdown · target ${ccTarget()}/day</h2><div class="tools no-print"><input id="ccQ" placeholder="🔍 Search staff or feeder…" value="${ccE(ccQv)}" oninput="ccSetQ(this.value)"><span id="ccSf">${[['', 'All'], ['met', 'Met target'], ['below', 'Below'], ['off', 'Absent / Excused / Supervision']].map(([k, l]) => `<button class="${k === ccST ? 'on' : ''}" onclick="ccSetST('${k}')">${l}</button>`).join(' ')}</span></div><div id="ccTbl"></div></div>
+<div class="card" style="grid-column:1/-1;--k:#a3e635"><h2>Staff performance breakdown · target ${ccTarget()}/day</h2><div class="tools no-print"><input id="ccQ" placeholder="🔍 Search staff or feeder…" value="${ccE(ccQv)}" oninput="ccSetQ(this.value)"><span id="ccSf">${[['', 'All'], ['met', 'Met target'], ['below', 'Below'], ['off', 'Absent / Excused / Supervision']].map(([k, l]) => `<button class="${k === ccST ? 'on' : ''}" onclick="ccSetST('${k}')">${l}</button>`).join(' ')}</span></div><div id="ccTbl"></div></div>
+<div class="card alert" style="--k:#fb7185"><h2>⚠ Unauthorized mapping</h2><div id="ccAl1"></div></div>
+<div class="card alert" style="border-color:var(--wa);--k:#fbbf24"><h2>📄 Call-back form audit</h2><div id="ccAl2"></div></div>
+<div class="card" style="grid-column:1/-1;--k:#a78bfa"><h2 id="ccAttT">Attendance</h2><div class="chips" id="ccCh"></div></div>
+<div class="card" id="ccAl3c" style="grid-column:1/-1;--k:#fb923c"><h2>📣 Issue log reminder</h2><div id="ccAl3"></div></div>
 </div>`;
   ccAlerts(); ccDraw();
 }
@@ -9931,7 +9937,7 @@ function ccSetQ(v) { ccQv = v; ccTable(); }
 /* ---- Command Center / Classic switch ---- */
 function ccTitle() {
   const d = (reportResults && reportResults.formattedDate) || 'Enumeration', on = document.getElementById('dashboardCapture').classList.contains('cc-on');
-  return on ? `🛰️ ${d} · GIS Command Center` : `📊 ${d} GIS Enumeration & Asset Mapping Performance Dashboard`;
+  return on ? `<span class="cc-sig">🛰️</span>${escapeHtml(d)} · GIS Command Center` : `📊 ${d} GIS Enumeration & Asset Mapping Performance Dashboard`;
 }
 function ccApplyMode(on) {
   const el = document.getElementById('dashboardCapture'); if (!el) return;
