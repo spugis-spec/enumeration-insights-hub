@@ -4988,7 +4988,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <style>${inlineCSS}${typeof CC_CSS==='string'?CC_CSS:''}</style>
 </head>
-<body>
+<body${clone.classList.contains('cc-on')?' class="cc-mode"':''}>
   <div style="max-width:1100px;margin:0 auto;">
     ${clone.outerHTML}
     <div style="margin-top:24px;padding-top:14px;border-top:2px dashed #d1d5db;text-align:center;">
@@ -9684,12 +9684,12 @@ const CC_CSS = `
 #ccBg .hl{fill:#fbbf24;fill-opacity:.15;stroke:#fbbf24;stroke-opacity:.5}
 #ccBg text{fill:#c4b5fd;fill-opacity:.6}
 #dashboardCapture:not(.cc-on) #ccRoot,#dashboardCapture:not(.cc-on) #ccBg,#dashboardCapture:not(.cc-on) .cc-eyebrow{display:none}
-#dashboardCapture.cc-on{--bg:#08051a;--p:#1c1650;--p2:#2a2370;--tx:#e6edf7;--mu:#8aa0c0;--ln:#3b3490;--ac:#22d3ee;--ok:#34d399;--wa:#fbbf24;--er:#f87171;position:relative;isolation:isolate;border-radius:20px;padding:14px;color:#e6edf7;font:14px/1.45 'DM Sans',system-ui,sans-serif;background:radial-gradient(60% 50% at 8% 0%,#7c3aed66,transparent),radial-gradient(50% 45% at 98% 8%,#ec489960,transparent),radial-gradient(60% 50% at 85% 100%,#06b6d455,transparent),radial-gradient(40% 40% at 0% 92%,#f59e0b40,transparent),#08051a}
+#dashboardCapture.cc-on{--bg:#08051a;--p:#1c1650;--p2:#2a2370;--tx:#e6edf7;--mu:#8aa0c0;--ln:#3b3490;--ac:#22d3ee;--ok:#34d399;--wa:#fbbf24;--er:#f87171;position:relative;isolation:isolate;padding:14px;color:#e6edf7;font:14px/1.45 'DM Sans',system-ui,sans-serif}
 #dashboardCapture.cc-on>:not(.gis-hero):not(#ccRoot):not(#ccBg){display:none!important}
 #dashboardCapture.cc-on>.gis-hero,#dashboardCapture.cc-on>#ccRoot{position:relative;z-index:1}
-#ccBg{position:absolute;inset:0;overflow:hidden;pointer-events:none;border-radius:inherit;z-index:0}
-#ccBg .ccbgsvg{position:sticky;top:0;display:block;width:100%;height:100vh;opacity:.8}
-body.cc-mode{background:#08051a!important}
+#ccBg{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+#ccBg .ccbgsvg{position:static;display:block;width:100%;height:100%;opacity:.8}
+body.cc-mode{background-color:#08051a!important;background-image:radial-gradient(60% 50% at 8% 0%,#7c3aed66,transparent),radial-gradient(50% 45% at 98% 8%,#ec489960,transparent),radial-gradient(60% 50% at 85% 100%,#06b6d455,transparent),radial-gradient(40% 40% at 0% 92%,#f59e0b40,transparent),linear-gradient(#ffffff0a 1px,transparent 1px),linear-gradient(90deg,#ffffff0a 1px,transparent 1px)!important;background-size:100% 100%,100% 100%,100% 100%,100% 100%,44px 44px,44px 44px!important;background-attachment:fixed!important}
 #ccRoot .grid{align-items:start}#ccRoot #ccNet svg{background:var(--p2);border-radius:10px}
 .cc-ebt{background:linear-gradient(90deg,#67e8f9,#f9a8d4,#fde68a);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .cc-sig{position:relative;display:inline-block;margin-right:.3em;animation:ccFloat 3s ease-in-out infinite;-webkit-text-fill-color:initial}
@@ -9697,6 +9697,11 @@ body.cc-mode{background:#08051a!important}
 .cc-sig::after{border-color:#f472b6;animation-delay:1.2s}
 @keyframes ccPing{0%{transform:scale(.5);opacity:.9}100%{transform:scale(2.8);opacity:0}}
 @keyframes ccFloat{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-3px) rotate(8deg)}}
+#ccRoot .cc-fig{display:flex;gap:18px;flex-wrap:wrap;margin:4px 0 6px}#ccRoot .cc-fig b{display:block;font:700 1.6rem 'Space Mono',monospace;color:var(--k)}#ccRoot .cc-fig span{font-size:.7rem;color:var(--mu)}
+#ccRoot details.cc-more{margin-top:8px}#ccRoot summary{cursor:pointer;display:inline-block;padding:5px 14px;border-radius:99px;font-size:.78rem;font-weight:700;background:color-mix(in srgb,var(--k) 25%,transparent);border:1px solid var(--k);list-style:none}
+#ccRoot summary::-webkit-details-marker{display:none}#ccRoot details[open]>summary::after{content:' ▲'}#ccRoot details:not([open])>summary::after{content:' ▼'}
+#ccRoot .cc-classic{margin-top:8px;background:#fff;color:#1f2937;border-radius:10px;padding:8px;overflow-x:auto}
+#ccRoot .cc-classic table{min-width:0;width:100%;color:#1f2937}#ccRoot .cc-classic th{position:static;background:transparent;color:inherit;text-transform:none;letter-spacing:0;font-size:inherit;padding:inherit}#ccRoot .cc-classic td{border-bottom:0}#ccRoot .cc-classic tr:hover td{background:transparent}
 #ccRoot table{color:#e6edf7}#ccRoot th{background:#1c1650}#ccRoot .tools{align-items:center}
 .cc-svg{width:100%;max-height:380px;display:block}.cc-svg .nd{cursor:pointer;transition:opacity .2s}.cc-svg .nd:hover circle.c{filter:brightness(1.25)}
 .cc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px}
@@ -9877,13 +9882,36 @@ function ccLb() {
   el.innerHTML = v.map((r, i) => `<div class="row"><span>${i < 3 ? medal[i] : i + 1}</span><div><span style="color:${CC_COL[Math.max(0, ccFeederEntries().findIndex(x => x[0] === r.f)) % CC_COL.length]}">●</span> ${ccE(r.fullname)} <small style="color:var(--mu)">${CC_GN[r.g]}</small><div class="bar"><i style="width:${Math.min(r.total / T * 100, 100)}%;background:${r.total >= T ? 'linear-gradient(90deg,#34d399,#a3e635)' : r.g === 'aedc' ? 'linear-gradient(90deg,#f472b6,#fb923c)' : 'linear-gradient(90deg,#22d3ee,#818cf8)'}"></i></div></div><em>${r.total}</em></div>`).join('') || '<div class="al">No captures for this view yet.</div>';
 }
 function ccTxt(id) { const e = document.getElementById(id); return e ? (e.innerText || e.textContent || '').trim() : ''; }
+function ccClone(el) {
+  if (!el) return '';
+  const c = el.cloneNode(true);
+  c.querySelectorAll('[id]').forEach(n => n.removeAttribute('id')); c.removeAttribute('id');
+  c.querySelectorAll('.no-print,.admin-only,button,input,textarea,select').forEach(n => n.remove());
+  return c.outerHTML;
+}
+function ccMore(wrapId, inner) {
+  const d = document.querySelector('#' + wrapId + ' details'), open = d && d.open;
+  return `<details class="cc-more"${open ? ' open' : ''}><summary>View full details</summary><div class="cc-classic">${inner}</div></details>`;
+}
 function ccAlerts() {
   if (!document.getElementById('ccAl1')) return;
-  const ua = document.getElementById('unauthorizedMappingAlert'), uaShown = ua && ua.style.display !== 'none' && ccTxt('unauthAlertText');
-  const cb = ccTxt('cbfSummary').replace(/\s+/g, ' '), cbA = ccTxt('cbfAlertText'), il = ccTxt('issueLogReminderText');
-  document.getElementById('ccAl1').innerHTML = uaShown ? `<div class="al" style="white-space:pre-wrap">${ccE(uaShown)}</div>` : '<div class="al">✅ No unauthorized mapping flagged for this report.</div>';
-  document.getElementById('ccAl2').innerHTML = (cb || cbA) ? `<div class="al">${ccE(cb)}</div><div class="al" style="white-space:pre-wrap">${ccE(cbA)}</div>` : '<div class="al">No call-back form audit loaded for this date.</div>';
-  const x = document.getElementById('ccAl3'); if (x) x.innerHTML = il ? `<div class="al" style="white-space:pre-wrap">${ccE(il)}</div>` : '';
+  const a1 = document.getElementById('ccAl1'); if (!a1) return;
+  const ua = document.getElementById('unauthorizedMappingAlert'), tb = document.getElementById('unauthTableBody');
+  const rows = tb ? [...tb.rows].filter(r => r.cells.length >= 6) : [], atx = ccTxt('unauthAlertText'), rem = document.getElementById('feederRemarkDisplay');
+  if (ua && ua.style.display !== 'none' && (rows.length || atx)) {
+    const staff = new Set(rows.map(r => r.cells[1].textContent.trim())).size, poles = rows.reduce((s, r) => s + (parseInt(r.cells[5].textContent, 10) || 0), 0);
+    let inner = ccClone(document.getElementById('unauthAlertText')) + (rows.length ? '<div style="height:8px"></div>' + ccClone(document.getElementById('unauthTable')) : '');
+    if (rem && rem.textContent.trim()) { const r2 = rem.cloneNode(true); r2.removeAttribute('id'); r2.style.display = 'block'; inner += '<div style="height:8px"></div>' + r2.outerHTML; }
+    a1.innerHTML = `<div class="cc-fig"><div><b>${staff}</b><span>staff flagged</span></div><div><b>${poles}</b><span>poles outside assigned feeder</span></div></div>` + ccMore('ccAl1', inner);
+  } else a1.innerHTML = '<div class="al">✅ No unauthorized mapping flagged for this report.</div>';
+  const a2 = document.getElementById('ccAl2'), cr = document.getElementById('cbfTableBody'), crows = cr ? [...cr.rows].filter(r => r.cells.length >= 6) : [], sm = document.getElementById('cbfSummary'), ctx = ccTxt('cbfAlertText');
+  if (a2) {
+    if (sm && (sm.textContent.trim() || ctx)) {
+      const inner = ccClone(document.getElementById('cbfAlertText')) + (cr ? '<div style="height:8px"></div>' + ccClone(cr.closest('table')) : '');
+      a2.innerHTML = `<div class="cc-fig"><div><b>${crows.length}</b><span>flagged forms</span></div></div><div class="cc-classic" style="background:transparent;padding:0">${ccClone(sm)}</div>` + ccMore('ccAl2', inner);
+    } else a2.innerHTML = '<div class="al">No call-back form audit loaded for this date.</div>';
+  }
+  const il = ccTxt('issueLogReminderText'), x = document.getElementById('ccAl3'); if (x) x.innerHTML = il ? `<div class="al" style="white-space:pre-wrap">${ccE(il)}</div>` : '';
   const x2 = document.getElementById('ccAl3c'); if (x2) x2.style.display = il ? '' : 'none';
 }
 function ccAttendance() {
