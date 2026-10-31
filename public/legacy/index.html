@@ -4991,6 +4991,7 @@
 <body${clone.classList.contains('cc-on')?' class="cc-mode"':''}>
   <div style="max-width:1100px;margin:0 auto;">
     ${clone.outerHTML}
+    ${typeof ccExportScript==='function'?ccExportScript(clone):''}
     <div style="margin-top:24px;padding-top:14px;border-top:2px dashed #d1d5db;text-align:center;">
       <div style="font-size:11px;color:#9ca3af;">
         📊 GIS Enumeration &amp; Asset Mapping Performance Dashboard &nbsp;·&nbsp; Exported ${new Date().toLocaleString()}
@@ -9588,7 +9589,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 })();
 </script>
-<script>
+<script id="ccScript">
 /* ===== GIS Command Center layer (v1): DT lookup, feeder network nodes, classic-view switch ===== */
 const CC_CSS = `
 #dashboardCapture.cc-on .gis-hero{background:radial-gradient(60% 90% at 6% 0%,#7c3aedcc,transparent),radial-gradient(50% 80% at 100% 8%,#ec4899b0,transparent),radial-gradient(60% 90% at 78% 115%,#06b6d4b0,transparent),#0b0720;box-shadow:0 18px 48px -18px #7c3aed,inset 0 0 0 1px #ffffff22}
@@ -9690,7 +9691,7 @@ const CC_CSS = `
 #ccBg{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
 #ccBg .ccbgsvg{position:static;display:block;width:100%;height:100%;opacity:.8}
 body.cc-mode{background-color:#08051a!important;background-image:radial-gradient(60% 50% at 8% 0%,#7c3aed66,transparent),radial-gradient(50% 45% at 98% 8%,#ec489960,transparent),radial-gradient(60% 50% at 85% 100%,#06b6d455,transparent),radial-gradient(40% 40% at 0% 92%,#f59e0b40,transparent),linear-gradient(#ffffff0a 1px,transparent 1px),linear-gradient(90deg,#ffffff0a 1px,transparent 1px)!important;background-size:100% 100%,100% 100%,100% 100%,100% 100%,44px 44px,44px 44px!important;background-attachment:fixed!important}
-#ccRoot .grid{align-items:start}#ccRoot #ccNet svg{background:var(--p2);border-radius:10px}
+#ccRoot .grid{align-items:stretch}#ccRoot .cc-fill{display:flex;flex-direction:column}#ccRoot #ccNet{flex:1;display:flex}#ccRoot #ccNet svg.cc-svg{flex:1;max-height:none;min-height:300px;height:auto}#ccRoot #ccLb{flex:1;display:flex;flex-direction:column;justify-content:space-evenly}#ccRoot #ccDetail{margin-top:0}#ccRoot #ccNet svg{background:var(--p2);border-radius:10px}
 .cc-ebt{background:linear-gradient(90deg,#67e8f9,#f9a8d4,#fde68a);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .cc-sig{position:relative;display:inline-block;margin-right:.3em;animation:ccFloat 3s ease-in-out infinite;-webkit-text-fill-color:initial}
 .cc-sig::before,.cc-sig::after{content:'';position:absolute;left:50%;top:50%;width:1.3em;height:1.3em;margin:-.65em 0 0 -.65em;border-radius:50%;border:2px solid #22d3ee;opacity:0;pointer-events:none;animation:ccPing 2.4s ease-out infinite}
@@ -9896,6 +9897,11 @@ function ccMore(wrapId, inner) {
 function ccAlerts() {
   if (!document.getElementById('ccAl1')) return;
   const a1 = document.getElementById('ccAl1'); if (!a1) return;
+  if (window.CC_EXPORT) {
+    a1.innerHTML = CC_EXPORT.al1; const b = document.getElementById('ccAl2'); if (b) b.innerHTML = CC_EXPORT.al2;
+    const c = document.getElementById('ccAl3'); if (c) c.innerHTML = CC_EXPORT.al3; const c2 = document.getElementById('ccAl3c'); if (c2) c2.style.display = CC_EXPORT.al3show ? '' : 'none';
+    return;
+  }
   const ua = document.getElementById('unauthorizedMappingAlert'), tb = document.getElementById('unauthTableBody');
   const rows = tb ? [...tb.rows].filter(r => r.cells.length >= 6) : [], atx = ccTxt('unauthAlertText'), rem = document.getElementById('feederRemarkDisplay');
   if (ua && ua.style.display !== 'none' && (rows.length || atx)) {
@@ -9948,8 +9954,9 @@ function ccRenderAll() {
   const seg = ['ALL', 'AEDC', 'BSS', 'NYSC'].map(g => `<button class="${g === ccG ? 'on' : ''}" onclick="ccSetG('${g}')">${g === 'ALL' ? 'All' : g}</button>`).join('');
   root.innerHTML = `<div class="seg no-print" style="margin-bottom:12px">${seg}</div><div class="kpis" id="ccKpis"></div>
 <div class="grid">
-<div class="card"><h2>Feeder network · tap a node to filter <span id="ccHint" class="cc-hint no-print"></span></h2><div id="ccNet"></div><div class="legend"><span>Node size = captures</span><span>Colours = feeders</span><span>Schematic layout, not to scale</span></div><div class="cc-grid" id="ccDetail"></div></div>
-<div class="card"><h2 id="ccLbT">Leaderboard</h2><div id="ccLb"></div></div>
+<div class="card cc-fill"><h2>Feeder network · tap a node to filter <span id="ccHint" class="cc-hint"></span></h2><div id="ccNet"></div><div class="legend"><span>Node size = captures</span><span>Colours = feeders</span><span>Schematic layout, not to scale</span></div></div>
+<div class="card cc-fill"><h2 id="ccLbT">Leaderboard</h2><div id="ccLb"></div></div>
+<div class="cc-grid" id="ccDetail" style="grid-column:1/-1"></div>
 <div class="card" style="grid-column:1/-1;--k:#a3e635"><h2>Staff performance breakdown · target ${ccTarget()}/day</h2><div class="tools no-print"><input id="ccQ" placeholder="🔍 Search staff or feeder…" value="${ccE(ccQv)}" oninput="ccSetQ(this.value)"><span id="ccSf">${[['', 'All'], ['met', 'Met target'], ['below', 'Below'], ['off', 'Absent / Excused / Supervision']].map(([k, l]) => `<button class="${k === ccST ? 'on' : ''}" onclick="ccSetST('${k}')">${l}</button>`).join(' ')}</span></div><div id="ccTbl"></div></div>
 <div class="card alert" style="--k:#fb7185"><h2>⚠ Unauthorized mapping</h2><div id="ccAl1"></div></div>
 <div class="card alert" style="border-color:var(--wa);--k:#fbbf24"><h2>📄 Call-back form audit</h2><div id="ccAl2"></div></div>
@@ -9961,6 +9968,26 @@ function ccRenderAll() {
 function ccSetG(g) { ccG = g; ccSel = null; ccRenderAll(); }
 function ccSetST(k) { ccST = k; ccRenderAll(); }
 function ccSetQ(v) { ccQv = v; ccTable(); }
+
+/* ---- Export: embed data + this script so the exported HTML stays interactive (nodes, switch, search) ---- */
+function ccExportScript(clone) {
+  try {
+    if (!clone.classList.contains('cc-on')) return '';
+    const rows = g => ((reportResults[g] && reportResults[g].results) || []).map(r => ({ username: r.username, fullname: r.fullname, dss: r.dss || 0, ht: r.ht || 0, cust: r.cust || 0, lt: r.lt || 0, issues: r.issues || 0, total: r.total || 0, status: r.status, excuseRemark: r.excuseRemark || '', excuseApproval: r.excuseApproval || '', zeroRemark: r.zeroRemark || '', savedFeeder: (r.total > 0 && r.status === 'present') ? ccFeeder(r) : '' }));
+    const rr = { aedc: { results: rows('aedc') }, bss: { results: rows('bss') }, nysc: { results: rows('nysc') }, dateKey: reportResults.dateKey, endDateKey: reportResults.endDateKey, formattedDate: reportResults.formattedDate };
+    const [s, e] = ccRange(), from = s ? s.substring(0, 10) : null, to = e ? e.substring(0, 10) : from, dd = {}, worked = new Set(), feeders = new Set();
+    CC_GR.forEach(g => rr[g].results.forEach(r => { if (r.savedFeeder) feeders.add(r.savedFeeder.toLowerCase()); }));
+    Object.entries(dtDayData).forEach(([dk, fm]) => { if (dk !== 'unknown' && from && to && (dk < from || dk > to)) return; dd[dk] = fm; Object.values(fm).forEach(m => Object.keys(m).forEach(id => worked.add(id.toLowerCase()))); });
+    const dt = {}; Object.entries(dtLookup).forEach(([k, v]) => { if (worked.has(k) || (v.feeder && feeders.has(String(v.feeder).toLowerCase()))) dt[k] = v; });
+    const g = id => { const x = document.getElementById(id); return x ? x.innerHTML : ''; }, c3 = document.getElementById('ccAl3c');
+    const payload = { on: true, target: ccTarget(), rr, dt, dtDay: dd, al1: g('ccAl1'), al2: g('ccAl2'), al3: g('ccAl3'), al3show: !c3 || c3.style.display !== 'none' };
+    const stubs = "var reportResults=CC_EXPORT.rr,fvSessionOverrides={},feederLookup={},userFeederData={},firebaseInitialized=false;"
+      + "function escapeHtml(s){return String(s==null?'':s).replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]})}"
+      + "function perfDailyTarget(){return CC_EXPORT.target}function getTopFeeder(){return ''}function showStatus(){}function updateDashboard(){}async function loadFeederLookupFromCloud(){}";
+    const src = document.getElementById('ccScript').textContent.replace(/<\/script/gi, '<\\/script');
+    return '<script>window.CC_EXPORT=' + JSON.stringify(payload).replace(/<\//g, '<\\/') + ';\n' + stubs + '\n' + src + '\n<' + '/script>';
+  } catch (err) { console.error('ccExportScript', err); return ''; }
+}
 
 /* ---- Command Center / Classic switch ---- */
 function ccTitle() {
@@ -9977,9 +10004,10 @@ function ccApplyMode(on) {
 }
 (function ccInit() {
   const st = document.createElement('style'); st.id = 'ccStyle'; st.textContent = CC_CSS; document.head.appendChild(st);
-  try { const o = JSON.parse(localStorage.getItem('eih_dtLookup') || '{}'); if (o && typeof o === 'object') dtLookup = o; } catch (e) {}
+  let on = true;
+  if (window.CC_EXPORT) { dtLookup = CC_EXPORT.dt || {}; dtDayData = CC_EXPORT.dtDay || {}; on = !!CC_EXPORT.on; }
+  else { try { const o = JSON.parse(localStorage.getItem('eih_dtLookup') || '{}'); if (o && typeof o === 'object') dtLookup = o; } catch (e) {} try { on = localStorage.getItem('eih_cc') !== '0'; } catch (e) {} }
   ccStatus();
-  let on = true; try { on = localStorage.getItem('eih_cc') !== '0'; } catch (e) {}
   ccApplyMode(on);
   const _u = updateDashboard;
   updateDashboard = function () { const r = _u.apply(this, arguments); try { if (document.getElementById('dashboardCapture').classList.contains('cc-on')) ccRenderAll(); } catch (e) { console.error(e); } return r; };
