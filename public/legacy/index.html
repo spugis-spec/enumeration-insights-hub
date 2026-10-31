@@ -843,6 +843,7 @@
                             <div class="upload-zone rounded-lg p-4 text-center cursor-pointer" id="zone-cust" onclick="document.getElementById('file-cust').click()"><button type="button" class="clear-upload-btn" title="Clear file" onclick="event.stopPropagation(); clearUploadZone('cust');">✕</button><input type="file" id="file-cust" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleFileUpload(this, 'cust')"><div class="text-3xl mb-2">👥</div><div class="font-medium text-gray-700">Customer Enumeration</div><div class="text-sm text-gray-500" id="status-cust">Click or drag to upload</div></div>
                             <div class="upload-zone rounded-lg p-4 text-center cursor-pointer md:col-span-2" id="zone-issues" onclick="document.getElementById('file-issues').click()"><button type="button" class="clear-upload-btn" title="Clear file" onclick="event.stopPropagation(); clearUploadZone('issues');">✕</button><input type="file" id="file-issues" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleFileUpload(this, 'issues')"><div class="text-3xl mb-2">⚠️</div><div class="font-medium text-gray-700">Issue Log</div><div class="text-sm text-gray-500" id="status-issues">Click or drag to upload</div></div>
                             <div class="upload-zone rounded-lg p-4 text-center cursor-pointer md:col-span-2" id="zone-feeder-lookup" onclick="document.getElementById('file-feeder-lookup').click()"><button type="button" class="clear-upload-btn" title="Clear file" onclick="event.stopPropagation(); clearFeederLookupZone();">✕</button><button type="button" title="Download saved feeder lookup" onclick="event.stopPropagation(); downloadFeederLookup();" style="position:absolute;top:6px;right:34px;width:22px;height:22px;border-radius:50%;background:rgba(37,99,235,0.1);color:#2563eb;border:1px solid rgba(37,99,235,0.3);font-size:12px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5;">⬇</button><input type="file" id="file-feeder-lookup" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleFeederLookupUpload(this)"><div class="text-3xl mb-2">⚡</div><div class="font-medium text-gray-700">Feeder Lookup (Code → Name)</div><div class="text-sm text-gray-500" id="status-feeder-lookup">Upload feeder code lookup table (code, feeder_name) — use ⬇ above to download what's saved</div></div>
+                            <div class="upload-zone rounded-lg p-4 text-center cursor-pointer md:col-span-2" id="zone-dt-lookup" onclick="document.getElementById('file-dt-lookup').click()"><button type="button" class="clear-upload-btn" title="Clear DT lookup" onclick="event.stopPropagation(); clearDtLookupZone();">✕</button><button type="button" title="Download saved DT lookup" onclick="event.stopPropagation(); downloadDtLookup();" style="position:absolute;top:6px;right:34px;width:22px;height:22px;border-radius:50%;background:rgba(124,58,237,0.1);color:#7c3aed;border:1px solid rgba(124,58,237,0.3);font-size:12px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5;">⬇</button><input type="file" id="file-dt-lookup" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleDtLookupUpload(this)"><div class="text-3xl mb-2">🔌</div><div class="font-medium text-gray-700">DT Lookup (DT ID → DT Name)</div><div class="text-sm text-gray-500" id="status-dt-lookup">Upload DT lookup (DT ID, DT name, optional feeder) — updates are merged into what is saved</div></div>
                         </div>
                         <div id="mfHost" style="display:none"></div>
                     </div>
@@ -1141,13 +1142,15 @@
                         <div class="gis-hero-actions no-print">
                           <span id="accessBadgeHero" class="hero-pill hero-pill-static">&#128065;&#65039; Public View</span>
                           <button type="button" onclick="refreshDashboard()" class="hero-pill">&#128260; Refresh</button>
-                          <button type="button" id="controlsPanelToggleBtn" onclick="toggleControlsPanel()" class="hero-pill">&#9881;&#65039; Filters, Options &amp; Tools</button>
+                          <button type="button" id="controlsPanelToggleBtn" onclick="toggleControlsPanel()" class="hero-pill">&#9776; Menu · Filters, Options &amp; Tools</button>
+                          <button type="button" id="ccToggleBtn" onclick="ccApplyMode(!document.getElementById('dashboardCapture').classList.contains('cc-on'))" class="hero-pill no-print" title="Switch between the Command Center look and the classic dashboard">🕰️ Classic view</button>
                           <button type="button" id="heroWhatsAppBtn" onclick="shareHTMLToWhatsApp()" class="hero-pill hero-pill-wa" title="Export this dashboard as HTML and send it straight to WhatsApp">
                             <svg viewBox="0 0 32 32" width="17" height="17" aria-hidden="true" focusable="false"><path fill="#25D366" d="M16 0C7.2 0 0 7.2 0 16c0 2.8.7 5.5 2.1 7.9L0 32l8.3-2.2c2.3 1.3 5 1.9 7.7 1.9 8.8 0 16-7.2 16-16S24.8 0 16 0z"/><path fill="#fff" d="M24.3 20.2c-.4 1-2 1.9-2.8 2-.7.1-1.6.1-2.6-.2-3.9-1.2-6.4-5-6.6-5.3-.2-.3-1.6-2.1-1.6-4s1-2.8 1.4-3.2c.3-.3.8-.4 1-.4h.7c.2 0 .5 0 .8.6.3.7 1 2.5 1.1 2.7.1.2.1.4 0 .7-.1.2-.2.4-.4.6l-.4.5c-.2.2-.3.4-.2.7.2.4.8 1.5 1.8 2.4 1.2 1.2 2.3 1.6 2.6 1.7.3.1.5.1.7-.1.2-.2.8-.9 1-1.2.2-.3.4-.3.7-.2.3.1 2 1 2.4 1.2.3.2.5.2.6.4.1.2.1.9-.2 1.9z"/></svg>
                             <span>Share to WhatsApp</span>
                           </button>
                         </div>
 
+                        <div class="cc-eyebrow">📡 GIS Enumeration &amp; Asset Mapping · Daily Report</div>
                         <h2 class="gis-hero-title" id="dashboardDateHeader">&#128202; Enumeration Dashboard</h2>
                         <div class="gis-hero-rule"></div>
                         <p class="gis-hero-sub" id="dashboardDateSubheader"></p>
@@ -1195,6 +1198,7 @@
                         <div id="sectionBss" style="background: white; border-radius: 8px; padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);"><h3 style="font-size: 0.9rem; font-weight: 600; margin: 0 0 8px 0; display: flex; align-items: center; gap: 6px;"><span style="width: 12px; height: 12px; background: #22c55e; border-radius: 50%;"></span>BSS Enumerators</h3><div style="overflow-x: auto;"><table id="dashboardBssTable" style="width: 100%; border-collapse: collapse; font-size: 11px;"><thead><tr style="background: #f0fdf4;"><th style="border: 1px solid #bbf7d0; padding: 6px 8px; text-align: left;">S/N</th><th style="border: 1px solid #bbf7d0; padding: 6px 8px; text-align: left;">Full Name</th><th style="border: 1px solid #bbf7d0; padding: 6px 8px; text-align: center;">DT/DSS</th><th style="border: 1px solid #bbf7d0; padding: 6px 8px; text-align: center;">HT</th><th style="border: 1px solid #bbf7d0; padding: 6px 8px; text-align: center;">Cust</th><th style="border: 1px solid #bbf7d0; padding: 6px 8px; text-align: center;">LT</th><th style="border: 1px solid #bbf7d0; padding: 6px 8px; text-align: center;">Issues</th><th style="border: 1px solid #bbf7d0; padding: 6px 8px; text-align: center;">Total</th><th style="border: 1px solid #bbf7d0; padding: 6px 8px; text-align: center;">Status</th><th style="border: 1px solid #bbf7d0; padding: 6px 8px; text-align: center;">Feeder</th><th style="border: 1px solid #bbf7d0; padding: 6px 8px; text-align: center;">Remark</th></tr></thead><tbody id="dashboardBssBody"></tbody><tfoot id="dashboardBssFoot" style="background: #dcfce7; font-weight: 600;"></tfoot></table></div></div>
                         <div id="sectionNysc" style="background: white; border-radius: 8px; padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);"><h3 style="font-size: 0.9rem; font-weight: 600; margin: 0 0 8px 0; display: flex; align-items: center; gap: 6px;"><span style="width: 12px; height: 12px; background: #f97316; border-radius: 50%;"></span>NYSC Enumerators</h3><div style="overflow-x: auto;"><table id="dashboardNyscTable" style="width: 100%; border-collapse: collapse; font-size: 11px;"><thead><tr style="background: #fff7ed;"><th style="border: 1px solid #fed7aa; padding: 6px 8px; text-align: left;">S/N</th><th style="border: 1px solid #fed7aa; padding: 6px 8px; text-align: left;">Full Name</th><th style="border: 1px solid #fed7aa; padding: 6px 8px; text-align: center;">DT/DSS</th><th style="border: 1px solid #fed7aa; padding: 6px 8px; text-align: center;">HT</th><th style="border: 1px solid #fed7aa; padding: 6px 8px; text-align: center;">Cust</th><th style="border: 1px solid #fed7aa; padding: 6px 8px; text-align: center;">LT</th><th style="border: 1px solid #fed7aa; padding: 6px 8px; text-align: center;">Issues</th><th style="border: 1px solid #fed7aa; padding: 6px 8px; text-align: center;">Total</th><th style="border: 1px solid #fed7aa; padding: 6px 8px; text-align: center;">Status</th><th style="border: 1px solid #fed7aa; padding: 6px 8px; text-align: center;">Feeder</th><th style="border: 1px solid #fed7aa; padding: 6px 8px; text-align: center;">Remark</th></tr></thead><tbody id="dashboardNyscBody"></tbody><tfoot id="dashboardNyscFoot" style="background: #ffedd5; font-weight: 600;"></tfoot></table></div></div>
                         <div id="sectionGrandTotal" style="background: white; border-radius: 8px; padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);"><h3 style="font-size: 0.9rem; font-weight: 600; margin: 0 0 8px 0; display: flex; align-items: center; gap: 6px;"><span style="width: 12px; height: 12px; background: #a855f7; border-radius: 50%;"></span>Grand Total Summary</h3><div style="overflow-x: auto;"><table id="grandTotalTable" style="width: 100%; border-collapse: collapse; font-size: 11px;"><thead><tr style="background: #faf5ff;"><th style="border: 1px solid #e9d5ff; padding: 6px 8px; text-align: left;">Group</th><th style="border: 1px solid #e9d5ff; padding: 6px 8px; text-align: center;">DT/DSS</th><th style="border: 1px solid #e9d5ff; padding: 6px 8px; text-align: center;">HT Pole</th><th style="border: 1px solid #e9d5ff; padding: 6px 8px; text-align: center;">Customer</th><th style="border: 1px solid #e9d5ff; padding: 6px 8px; text-align: center;">LT Pole</th><th style="border: 1px solid #e9d5ff; padding: 6px 8px; text-align: center;">Issues</th><th style="border: 1px solid #e9d5ff; padding: 6px 8px; text-align: center;">Total</th></tr></thead><tbody id="grandTotalBody"></tbody><tfoot id="grandTotalFoot" style="background: #e9d5ff; font-weight: 700;"></tfoot></table></div></div>
+                        <div id="sectionFeederNetwork"><div class="cc-h"><span>📡 Feeder network · tap a node to filter</span><span class="cc-hint no-print" id="ccHint"></span></div><div id="ccNet"></div><div class="cc-grid" id="ccDetail"></div></div>
                         <div id="sectionFeederSummary" style="background: white; border-radius: 8px; padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                             <h3 style="font-size: 0.9rem; font-weight: 600; margin: 0 0 8px 0; display: flex; align-items: center; gap: 6px;"><span style="width: 12px; height: 12px; background: #f59e0b; border-radius: 50%;"></span>⚡ Feeder Allocation Summary</h3>
                             <div style="overflow-x: auto;"><table id="feederSummaryTable" style="width: 100%; border-collapse: collapse; font-size: 11px;">
@@ -2269,6 +2273,7 @@
     // of merging into userFeederData directly, so removed/replaced files
     // don't leave stale residue behind.
     function rebuildUserFeederData() {
+        if(typeof ccReset==='function') ccReset();
         userFeederData={};
         htDssFeederData={};
         ['dss','ht','lt','cust','issues'].forEach(t=>{
@@ -2407,6 +2412,7 @@
         targetMap = targetMap || userFeederData;
         if(!json||!json.length)return;
         const cols=Object.keys(json[0]||{});
+        const dtCol = (typeof ccFindDtCol==='function' && targetMap===userFeederData) ? ccFindDtCol(cols) : null;
 
         // Find ALL feeder columns — case-insensitive, space/underscore-agnostic
         // Valid names: _33kv_feeder, _11kv_feeder, feeder  (and variants with spaces or caps)
@@ -2462,6 +2468,7 @@
                 if(!targetMap[username]) targetMap[username] = {};
                 if(!targetMap[username][dateKey]) targetMap[username][dateKey] = {};
                 targetMap[username][dateKey][feederVal] = (targetMap[username][dateKey][feederVal]||0)+1;
+                if(dtCol) ccCollectDt(row, dtCol, dateKey, feederVal, username);
             });
         });
     }
@@ -4154,7 +4161,7 @@
             currentViewMode = 'legacy'; // Reset for non-paired dates
         }
 
-        document.getElementById('dashboardDateHeader').innerHTML = `📊 ${reportResults.formattedDate || 'Enumeration'} GIS Enumeration & Asset Mapping Performance Dashboard`;
+        document.getElementById('dashboardDateHeader').innerHTML = (typeof ccTitle==='function') ? ccTitle() : `📊 ${reportResults.formattedDate || 'Enumeration'} GIS Enumeration & Asset Mapping Performance Dashboard`;
         document.getElementById('dashboardDateSubheader').textContent = reportResults.dateRange || '';
         const heroDateEl = document.getElementById('heroDateText');
         if (heroDateEl) {
@@ -4425,6 +4432,7 @@
         });
 
         const entries = Object.entries(feederMap).sort((a,b)=>b[1].total - a[1].total);
+        if(typeof renderFeederNetwork==='function') renderFeederNetwork(entries, rStartDate, rEndDate);
 
         if(!entries.length){
             tbody.innerHTML = `<tr><td colspan="4" style="border:1px solid #fde68a;padding:10px;text-align:center;color:#9ca3af;font-style:italic;">No feeder data available for this report</td></tr>`;
@@ -4452,7 +4460,7 @@
             const editBtn = isAdminMode
                 ? `<button onclick="editFeederStatus('${escapeHtml(feeder)}')" style="font-size:9px;padding:1px 6px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:4px;cursor:pointer;margin-left:4px;">✏️</button>`
                 : '';
-            return `<tr style="background:${rowBg};">
+            return `<tr data-feeder="${escapeHtml(feeder)}" style="background:${rowBg};${(typeof ccSel!=='undefined' && ccSel && ccSel!==feeder)?'display:none;':''}">
                 <td style="border:1px solid #fde68a;padding:6px 10px;font-weight:600;color:#92400e;word-break:break-word;">
                     <span style="display:inline-flex;align-items:center;gap:5px;">⚡ ${escapeHtml(feeder)}</span>
                 </td>
@@ -4967,7 +4975,7 @@
   <meta name="viewport" content="width=1280, initial-scale=0.25, minimum-scale=0.1, maximum-scale=5.0, user-scalable=yes">
   <title>${escapeHtml(pageTitle)}</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-  <style>${inlineCSS}</style>
+  <style>${inlineCSS}${typeof CC_CSS==='string'?CC_CSS:''}</style>
 </head>
 <body>
   <div style="max-width:1100px;margin:0 auto;">
@@ -5610,7 +5618,7 @@
         if (!panel) return;
         const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !shouldOpen);
-        if (btn) btn.innerHTML = shouldOpen ? '🔼 Hide Filters, Options &amp; Tools' : '🔽 Filters, Options &amp; Tools';
+        if (btn) btn.innerHTML = shouldOpen ? '✕ Hide Menu' : '&#9776; Menu · Filters, Options &amp; Tools';
         if (shouldOpen) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
@@ -5907,6 +5915,7 @@
     function clearAll(){
         Object.keys(uploadedData).forEach(k=>{uploadedData[k]=null;const z=document.getElementById(`zone-${k}`),s=document.getElementById(`status-${k}`),f=document.getElementById(`file-${k}`);if(z)z.classList.remove('has-file');if(s)s.textContent='Click or drag to upload';if(f)f.value='';});
         userFeederData = {};  // reset date-keyed feeder data
+        if(typeof ccReset==='function') ccReset();
         lastFidData={dss:null,ht:null,lt:null,cust:null,issues:null};
         lastFidReportGenerated=false;
         updateLastFidDisplay();
@@ -9567,6 +9576,183 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(function(e){ console.error('GIS cloud spool', e); });
   });
 })();
+</script>
+<script>
+/* ===== GIS Command Center layer (v1): DT lookup, feeder network nodes, classic-view switch ===== */
+const CC_CSS = `
+#dashboardCapture:not(.cc-on) #sectionFeederNetwork,#dashboardCapture:not(.cc-on) .cc-eyebrow{display:none}
+#dashboardCapture.cc-on .gis-hero{background:radial-gradient(60% 90% at 6% 0%,#7c3aedcc,transparent),radial-gradient(50% 80% at 100% 8%,#ec4899b0,transparent),radial-gradient(60% 90% at 78% 115%,#06b6d4b0,transparent),#0b0720;box-shadow:0 18px 48px -18px #7c3aed,inset 0 0 0 1px #ffffff22}
+#dashboardCapture.cc-on .gis-hero-rule{background:linear-gradient(90deg,transparent,#22d3ee,#f472b6,#fbbf24,transparent);box-shadow:0 0 18px #f472b688}
+#dashboardCapture.cc-on .gis-hero-title{font-weight:800}
+.cc-eyebrow{font-weight:900;font-size:clamp(1.05rem,2.8vw,1.85rem);letter-spacing:.14em;text-transform:uppercase;margin:16px auto 0;line-height:1.2;background:linear-gradient(90deg,#67e8f9,#f9a8d4,#fde68a);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 2px 10px #00000066)}
+#sectionFeederNetwork{background:radial-gradient(70% 60% at 10% 0%,#7c3aed44,transparent),radial-gradient(60% 50% at 100% 100%,#06b6d433,transparent),#100a30;color:#fff;border-radius:16px;padding:16px;margin-bottom:12px;border:1px solid #3b3490}
+.cc-h{font-weight:800;letter-spacing:.1em;text-transform:uppercase;font-size:.78rem;color:#c4b5fd;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.cc-hint{font-size:.7rem;color:#c4b5fd;text-transform:none;letter-spacing:0;font-weight:600}
+.cc-svg{width:100%;max-height:380px;display:block}.cc-svg .nd{cursor:pointer;transition:opacity .2s}.cc-svg .nd:hover circle.c{filter:brightness(1.25)}
+.cc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:10px}
+.cc-card{background:#ffffff0f;border:1px solid #ffffff1f;border-left:4px solid var(--k);border-radius:12px;padding:10px 12px}
+.cc-ct{display:flex;justify-content:space-between;gap:8px;font-size:.85rem}.cc-ct span{color:var(--k);font-weight:800;font-family:'Space Mono',monospace;white-space:nowrap}
+.cc-sub{font-size:.7rem;color:#a5b4fc;margin:3px 0 6px}
+.cc-dt{display:inline-block;margin:2px 3px 2px 0;padding:2px 9px;border-radius:99px;font-size:.68rem;font-weight:600}
+.cc-dt.on{background:color-mix(in srgb,var(--k) 25%,transparent);border:1px solid var(--k)}.cc-dt.off{border:1px dashed #ffffff55;color:#c4b5fd}.cc-dt i{font-style:normal;opacity:.8}
+.cc-none{font-size:.68rem;color:#94a3b8;font-style:italic}.cc-empty{color:#a5b4fc;text-align:center;padding:14px}
+`;
+let dtLookup = {}, dtDayData = {}, ccSeen = new WeakSet(), ccSel = null, ccLast = null;
+const CC_COL = ['#22d3ee','#f472b6','#fbbf24','#a78bfa','#a3e635','#fb923c','#38bdf8','#f87171','#34d399','#e879f9'];
+const ccKey = v => String(v == null ? '' : v).trim();
+const ccNorm = c => String(c).toLowerCase().replace(/[\s\-]+/g, '_').trim();
+function ccReset() { dtDayData = {}; ccSeen = new WeakSet(); }
+function ccFindDtCol(cols) {
+  return cols.find(c => ['dt_id', 'dtid'].includes(ccNorm(c))) || cols.find(c => ccNorm(c).startsWith('dss_')) || null;
+}
+function ccCollectDt(row, dtCol, dateKey, feeder, username) {
+  if (!dtCol || ccSeen.has(row)) return;
+  ccSeen.add(row);
+  const id = ccKey(row[dtCol]);
+  if (!id || id === '0' || id.toLowerCase() === 'null') return;
+  const d = (dtDayData[dateKey] = dtDayData[dateKey] || {}), f = (d[feeder] = d[feeder] || {}), o = (f[id] = f[id] || { n: 0, u: {} });
+  o.n++; o.u[username] = 1;
+}
+function ccDtName(id) { const e = dtLookup[ccKey(id).toLowerCase()]; return e && e.name ? e.name : ccKey(id); }
+
+/* ---- DT lookup: upload / save / download / clear ---- */
+function ccStatus() {
+  const n = Object.keys(dtLookup).length, st = document.getElementById('status-dt-lookup'), z = document.getElementById('zone-dt-lookup');
+  if (st) st.innerHTML = n ? `<span class="text-green-600">✓ ${n} DT names loaded</span>` : 'Upload DT lookup (DT ID, DT name, optional feeder) — updates are merged into what is saved';
+  if (z) z.classList.toggle('has-file', n > 0);
+}
+function ccSaveDt() {
+  try { localStorage.setItem('eih_dtLookup', JSON.stringify(dtLookup)); } catch (e) {}
+  if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && typeof currentUser !== 'undefined' && currentUser) {
+    const o = {};
+    Object.values(dtLookup).forEach(v => { o[v.id.replace(/[.#$\[\]\/]/g, '_')] = { id: v.id, name: v.name, feeder: v.feeder || '' }; });
+    database.ref('dtLookup').set(o).catch(e => console.error('DT lookup save', e));
+  }
+}
+async function ccLoadDtCloud() {
+  try {
+    if (typeof firebaseInitialized === 'undefined' || !firebaseInitialized) return;
+    const o = (await database.ref('dtLookup').once('value')).val();
+    if (o) { Object.values(o).forEach(v => { if (v && v.id) dtLookup[ccKey(v.id).toLowerCase()] = { id: v.id, name: v.name, feeder: v.feeder || '' }; }); ccStatus(); ccRefresh(); }
+  } catch (e) { console.error('DT lookup load', e); }
+}
+function handleDtLookupUpload(input) {
+  const file = input.files[0]; if (!file) return;
+  const st = document.getElementById('status-dt-lookup'); st.textContent = 'Processing...';
+  const rd = new FileReader();
+  rd.onload = e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      if (!rows.length) throw new Error('The file is empty');
+      const cols = Object.keys(rows[0]);
+      const idC = cols.find(c => /(^|_)(dt|dss)_?(id|code|no)$|^id$/.test(ccNorm(c))) || cols[0];
+      const feC = cols.find(c => ccNorm(c).includes('feeder'));
+      const nmC = cols.find(c => c !== idC && c !== feC && /name|desc|^dt$|^dss$/.test(ccNorm(c))) || cols.find(c => c !== idC && c !== feC);
+      if (!nmC) throw new Error('Could not find a DT name column');
+      let n = 0;
+      rows.forEach(r => {
+        const id = ccKey(r[idC]), name = ccKey(r[nmC]); if (!id || !name) return;
+        const f = feC ? ccKey(r[feC]) : '';
+        dtLookup[id.toLowerCase()] = { id, name, feeder: (typeof feederLookup !== 'undefined' && feederLookup[f]) || f };
+        n++;
+      });
+      input.value = ''; ccStatus(); ccSaveDt(); ccRefresh();
+      showStatus(`DT lookup updated: ${n} rows read, ${Object.keys(dtLookup).length} DT names saved`, 'success');
+    } catch (err) { st.textContent = 'Error loading file'; showStatus('Error: ' + err.message, 'error'); }
+  };
+  rd.readAsArrayBuffer(file);
+}
+function downloadDtLookup() {
+  const v = Object.values(dtLookup); if (!v.length) { showStatus('No DT lookup saved yet', 'warning'); return; }
+  const ws = XLSX.utils.aoa_to_sheet([['dt_id', 'dt_name', 'feeder'], ...v.sort((a, b) => a.id.localeCompare(b.id)).map(x => [x.id, x.name, x.feeder || ''])]);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'DT Lookup'); XLSX.writeFile(wb, 'dt_lookup.xlsx');
+}
+function clearDtLookupZone() {
+  if (!confirm('Clear the whole DT lookup (this device and cloud)?')) return;
+  dtLookup = {}; try { localStorage.removeItem('eih_dtLookup'); } catch (e) {}
+  if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && typeof currentUser !== 'undefined' && currentUser) database.ref('dtLookup').remove().catch(console.error);
+  ccStatus(); ccRefresh();
+}
+
+/* ---- Feeder network ---- */
+function ccDtFor(feeder, s, e) {
+  const from = s ? s.substring(0, 10) : null, to = e ? e.substring(0, 10) : from, out = {};
+  Object.entries(dtDayData).forEach(([dk, fm]) => {
+    if (dk !== 'unknown' && from && to && (dk < from || dk > to)) return;
+    const d = fm[feeder]; if (!d) return;
+    Object.entries(d).forEach(([id, o]) => { const t = out[id.toLowerCase()] || (out[id.toLowerCase()] = { id, n: 0, u: {} }); t.n += o.n; Object.assign(t.u, o.u); });
+  });
+  return out;
+}
+function ccNodeDts(feeder, s, e) {
+  const m = ccDtFor(feeder, s, e), fl = String(feeder).toLowerCase(), list = Object.values(m).map(x => ({ id: x.id, name: ccDtName(x.id), n: x.n, worked: true }));
+  Object.values(dtLookup).forEach(v => { if (v.feeder && String(v.feeder).toLowerCase() === fl && !m[v.id.toLowerCase()]) list.push({ id: v.id, name: v.name, n: 0, worked: false }); });
+  return list.sort((a, b) => (b.n - a.n) || a.name.localeCompare(b.name));
+}
+function renderFeederNetwork(entries, s, e) {
+  ccLast = { entries, s, e };
+  const net = document.getElementById('ccNet'), det = document.getElementById('ccDetail'), hint = document.getElementById('ccHint');
+  if (!net || !det) return;
+  const esc = escapeHtml, n = entries.length;
+  if (ccSel && !entries.some(x => x[0] === ccSel)) ccSel = null;
+  if (!n) { net.innerHTML = ''; det.innerHTML = '<div class="cc-empty">No feeder data for this report</div>'; if (hint) hint.textContent = ''; return; }
+  const cx = 300, cy = 180, rx = n > 6 ? 215 : 185, ry = n > 6 ? 130 : 112;
+  const nodes = entries.map(([f, d], i) => {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / n, dts = ccNodeDts(f, s, e);
+    return { f, d, dts, x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a), r: Math.min(34, 14 + Math.sqrt(d.total) * 1.3), c: CC_COL[i % CC_COL.length] };
+  });
+  let h = `<svg viewBox="0 0 600 370" class="cc-svg" role="img" aria-label="Feeder network"><defs><radialGradient id="ccG"><stop offset="0" stop-color="#22d3ee" stop-opacity=".35"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></radialGradient></defs>`;
+  [55, 105, 160].forEach(r => h += `<ellipse cx="${cx}" cy="${cy}" rx="${r * 1.35}" ry="${r * .85}" fill="none" stroke="#ffffff22" stroke-dasharray="3 5"/>`);
+  nodes.forEach(nd => h += `<line x1="${cx}" y1="${cy}" x2="${nd.x.toFixed(1)}" y2="${nd.y.toFixed(1)}" stroke="${nd.c}" stroke-opacity=".6" stroke-width="${1 + Math.min(4, nd.d.total / 150)}" stroke-dasharray="6 4"/>`);
+  h += `<circle cx="${cx}" cy="${cy}" r="26" fill="url(#ccG)"/><circle cx="${cx}" cy="${cy}" r="9" fill="#22d3ee"/><text x="${cx}" y="${cy + 24}" text-anchor="middle" font-size="10" fill="#c4b5fd">AEDC GRID · ABUJA</text>`;
+  nodes.forEach(nd => {
+    const dim = ccSel && ccSel !== nd.f, sel = ccSel === nd.f, lab = nd.f.length > 26 ? nd.f.slice(0, 25) + '…' : nd.f;
+    h += `<g class="nd" data-f="${esc(nd.f)}" onclick="ccPick(this.dataset.f)" opacity="${dim ? .3 : 1}"><title>${esc(nd.f)} · ${nd.d.total} captures · ${nd.dts.length} DTs</title>`
+      + `<circle cx="${nd.x.toFixed(1)}" cy="${nd.y.toFixed(1)}" r="${nd.r + 9}" fill="${nd.c}" fill-opacity=".2"/>`
+      + `<circle class="c" cx="${nd.x.toFixed(1)}" cy="${nd.y.toFixed(1)}" r="${nd.r}" fill="${nd.c}" stroke="${sel ? '#fff' : 'none'}" stroke-width="3"/>`
+      + (sel ? `<circle cx="${nd.x.toFixed(1)}" cy="${nd.y.toFixed(1)}" r="${nd.r}" fill="none" stroke="#fff" stroke-width="2"><animate attributeName="r" values="${nd.r + 2};${nd.r + 16}" dur="1.2s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0" dur="1.2s" repeatCount="indefinite"/></circle>` : '')
+      + `<text x="${nd.x.toFixed(1)}" y="${(nd.y + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="800" fill="#0b0720">${nd.d.total}</text>`
+      + `<text x="${nd.x.toFixed(1)}" y="${(nd.y + nd.r + 14).toFixed(1)}" text-anchor="middle" font-size="10" fill="#e9e5ff">${esc(lab)}</text>`
+      + `<text x="${nd.x.toFixed(1)}" y="${(nd.y + nd.r + 26).toFixed(1)}" text-anchor="middle" font-size="9" fill="#a5b4fc">${nd.dts.length} DT${nd.dts.length === 1 ? '' : 's'}</text></g>`;
+  });
+  net.innerHTML = h + '</svg>';
+  det.innerHTML = nodes.filter(nd => !ccSel || ccSel === nd.f).map(nd => {
+    const chips = nd.dts.slice(0, 40).map(t => `<span class="cc-dt ${t.worked ? 'on' : 'off'}" title="${esc(t.id)}${t.worked ? '' : ' · allocated, no capture in this report'}">${esc(t.name)}${t.worked ? ` <i>×${t.n}</i>` : ''}</span>`).join('')
+      + (nd.dts.length > 40 ? `<span class="cc-none">+${nd.dts.length - 40} more</span>` : '')
+      || '<span class="cc-none no-print">No DT IDs found for this feeder — upload data with a DT ID column and/or a DT lookup</span>';
+    return `<div class="cc-card" style="--k:${nd.c}"><div class="cc-ct"><b>⚡ ${esc(nd.f)}</b><span>${nd.d.total}</span></div><div class="cc-sub">${esc([...nd.d.names].join(', '))}</div><div>${chips}</div></div>`;
+  }).join('');
+  if (hint) hint.textContent = ccSel ? `Showing ${ccSel} · tap the node again to show all` : `${Object.keys(dtLookup).length} DT names in lookup`;
+}
+function ccFilterRows() {
+  document.querySelectorAll('#feederSummaryBody tr[data-feeder]').forEach(tr => { tr.style.display = (!ccSel || tr.dataset.feeder === ccSel) ? '' : 'none'; });
+}
+function ccPick(f) { ccSel = ccSel === f ? null : f; if (ccLast) renderFeederNetwork(ccLast.entries, ccLast.s, ccLast.e); ccFilterRows(); }
+function ccRefresh() { try { if (typeof renderFeederSummary === 'function') renderFeederSummary(); } catch (e) { console.error(e); } }
+
+/* ---- Command Center / Classic switch ---- */
+function ccTitle() {
+  const d = (reportResults && reportResults.formattedDate) || 'Enumeration', on = document.getElementById('dashboardCapture').classList.contains('cc-on');
+  return on ? `🛰️ ${d} · GIS Command Center` : `📊 ${d} GIS Enumeration & Asset Mapping Performance Dashboard`;
+}
+function ccApplyMode(on) {
+  const el = document.getElementById('dashboardCapture'); if (!el) return;
+  el.classList.toggle('cc-on', on);
+  const b = document.getElementById('ccToggleBtn'); if (b) b.innerHTML = on ? '🕰️ Classic view' : '🛰️ Command Center';
+  try { localStorage.setItem('eih_cc', on ? '1' : '0'); } catch (e) {}
+  const h = document.getElementById('dashboardDateHeader'); if (h && reportResults && reportResults.formattedDate) h.innerHTML = ccTitle();
+}
+(function ccInit() {
+  const st = document.createElement('style'); st.id = 'ccStyle'; st.textContent = CC_CSS; document.head.appendChild(st);
+  try { const o = JSON.parse(localStorage.getItem('eih_dtLookup') || '{}'); if (o && typeof o === 'object') dtLookup = o; } catch (e) {}
+  ccStatus();
+  let on = true; try { on = localStorage.getItem('eih_cc') !== '0'; } catch (e) {}
+  ccApplyMode(on);
+  const _f = loadFeederLookupFromCloud;
+  loadFeederLookupFromCloud = async function () { await _f.apply(this, arguments); await ccLoadDtCloud(); };
+})();
+
 </script>
 </body>
 </html>

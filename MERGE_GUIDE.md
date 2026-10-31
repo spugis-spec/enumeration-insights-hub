@@ -98,3 +98,10 @@ The tool's own libraries (JSZip, PapaParse) are served from `public/legacy/merge
 - **Not listed:** DTs assigned inside the window, self-assigned DTs still waiting for authorization, completed and unassigned DTs. If the data has fewer than three recent capture dates, nothing is judged and the results say so.
 - **What you see.** The results window opens with "N ongoing DTs did not show up in the last 3 capture dates: mark as complete?" with each DT, feeder, who it is assigned to and when it was last seen. Untick any still being worked, then press **Mark N as complete**.
 - **Stays visible.** DT Allocation shows the same warning for the current feeder, a **Not seen 3 dates** filter, a tag on each such DT, and **Mark all as complete**.
+
+## GIS Command Center view + DT Lookup (Dashboard)
+
+- **Command Center / Classic.** The Dashboard header now has a bold "GIS Enumeration & Asset Mapping · Daily Report" banner, a Feeder network panel and a **🕰️ Classic view** button that switches back to the old look (the choice is remembered per device and is carried into the WhatsApp/HTML export). The old **Filters, Options & Tools** button is now **☰ Menu**; it still opens the hidden controls panel.
+- **DT Lookup (Upload Data Files).** Upload a file with `DT ID`, `DT name` and an optional `Feeder` column. Uploads are merged into what is saved (RTDB `dtLookup` when signed in as admin, plus this device). ⬇ downloads it, ✕ clears it.
+- **Feeder network nodes.** The DT ID column in the Customer/LT/DT/HT uploads (`DT ID`, `dtid`, or a column starting `dss_`) is translated to DT names. Each feeder node lists the DTs captured in the report period (with capture counts), plus DTs the lookup allocates to that feeder that had no captures (dashed). Tap a node to filter the panel and the Feeder Summary table.
+- DT IDs come from the raw files loaded in the session; dashboards reloaded from the cloud do not carry them.
