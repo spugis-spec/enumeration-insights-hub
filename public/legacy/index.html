@@ -9703,6 +9703,8 @@ body.cc-mode{background-color:#08051a!important;background-image:radial-gradient
 #ccRoot summary::-webkit-details-marker{display:none}#ccRoot details[open]>summary::after{content:' ▲'}#ccRoot details:not([open])>summary::after{content:' ▼'}
 #ccRoot .cc-classic{margin-top:8px;background:#fff;color:#1f2937;border-radius:10px;padding:8px;overflow-x:auto}
 #ccRoot .cc-classic table{min-width:0;width:100%;color:#1f2937}#ccRoot .cc-classic th{position:static;background:transparent;color:inherit;text-transform:none;letter-spacing:0;font-size:inherit;padding:inherit}#ccRoot .cc-classic td{border-bottom:0}#ccRoot .cc-classic tr:hover td{background:transparent}
+.cc-pill{display:inline-block;margin:0 0 6px;padding:1px 9px;border-radius:99px;font-size:.7rem;font-weight:700;background:color-mix(in srgb,var(--k) 40%,#1c1650);border:1px solid var(--k);color:#fff}
+#ccRoot .cc-card summary{padding:3px 10px;font-size:.7rem}#ccRoot .cc-card details.cc-more{margin-top:4px}
 #ccRoot table{color:#e6edf7}#ccRoot th{background:#1c1650}#ccRoot .tools{align-items:center}
 .cc-svg{width:100%;max-height:380px;display:block}.cc-svg .nd{cursor:pointer;transition:opacity .2s}.cc-svg .nd:hover circle.c{filter:brightness(1.25)}
 .cc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px}
@@ -9729,7 +9731,12 @@ function ccCollectDt(row, dtCol, dateKey, feeder, username) {
   const d = (dtDayData[dateKey] = dtDayData[dateKey] || {}), f = (d[feeder] = d[feeder] || {}), o = (f[id] = f[id] || { n: 0, u: {} });
   o.n++; o.u[username] = 1;
 }
-function ccDtName(id) { const e = dtLookup[ccKey(id).toLowerCase()]; return e && e.name ? e.name : ccKey(id); }
+const ccSk = k => String(k).replace(/[.#$\[\]\/]/g, '_');
+function ccDtName(id) {
+  const e = dtLookup[ccKey(id).toLowerCase()]; if (e && e.name) return e.name;
+  const sn = typeof reportResults !== 'undefined' && reportResults && reportResults.ccDt && reportResults.ccDt.names, k = ccSk(ccKey(id).toLowerCase());
+  return (sn && sn[k]) || ccKey(id);
+}
 
 /* ---- DT lookup: upload / save / download / clear ---- */
 function ccStatus() {
@@ -9792,19 +9799,31 @@ function clearDtLookupZone() {
 }
 
 /* ---- Feeder network ---- */
+/* DT IDs captured for THIS report: live uploads when present, else the snapshot saved inside the dashboard (reportResults.ccDt) */
+function ccDayMap(s, e) {
+  const from = s ? s.substring(0, 10) : null, to = e ? e.substring(0, 10) : from, live = {};
+  Object.entries(dtDayData).forEach(([dk, fm]) => { if (dk !== 'unknown' && from && to && (dk < from || dk > to)) return; live[dk] = fm; });
+  if (Object.keys(live).length) return { map: live, snap: false };
+  return { map: (reportResults && reportResults.ccDt && reportResults.ccDt.dtDay) || {}, snap: true };
+}
+function ccSnapshot() {
+  try {
+    const [s, e] = ccRange(), r = ccDayMap(s, e); if (r.snap) return;
+    const dtDay = {}, names = {};
+    Object.entries(r.map).forEach(([dk, fm]) => Object.entries(fm).forEach(([f, ids]) => Object.entries(ids).forEach(([id, o]) => {
+      const a = (dtDay[ccSk(dk)] = dtDay[ccSk(dk)] || {}), b = (a[ccSk(f)] = a[ccSk(f)] || {});
+      b[ccSk(id)] = { n: o.n }; names[ccSk(id.toLowerCase())] = ccDtName(id);
+    })));
+    reportResults.ccDt = { dtDay, names };
+  } catch (err) { console.error('ccSnapshot', err); }
+}
 function ccDtFor(feeder, s, e) {
-  const from = s ? s.substring(0, 10) : null, to = e ? e.substring(0, 10) : from, out = {};
-  Object.entries(dtDayData).forEach(([dk, fm]) => {
-    if (dk !== 'unknown' && from && to && (dk < from || dk > to)) return;
-    const d = fm[feeder]; if (!d) return;
-    Object.entries(d).forEach(([id, o]) => { const t = out[id.toLowerCase()] || (out[id.toLowerCase()] = { id, n: 0, u: {} }); t.n += o.n; Object.assign(t.u, o.u); });
-  });
+  const r = ccDayMap(s, e), fk = r.snap ? ccSk(feeder) : feeder, out = {};
+  Object.values(r.map).forEach(fm => { const d = fm[fk]; if (!d) return; Object.entries(d).forEach(([id, o]) => { const k = id.toLowerCase(), t = out[k] || (out[k] = { id, n: 0 }); t.n += o.n || 0; }); });
   return out;
 }
 function ccNodeDts(feeder, s, e) {
-  const m = ccDtFor(feeder, s, e), fl = String(feeder).toLowerCase(), list = Object.values(m).map(x => ({ id: x.id, name: ccDtName(x.id), n: x.n, worked: true }));
-  Object.values(dtLookup).forEach(v => { if (v.feeder && String(v.feeder).toLowerCase() === fl && !m[v.id.toLowerCase()]) list.push({ id: v.id, name: v.name, n: 0, worked: false }); });
-  return list.sort((a, b) => (b.n - a.n) || a.name.localeCompare(b.name));
+  return Object.values(ccDtFor(feeder, s, e)).map(x => ({ id: x.id, name: ccDtName(x.id), n: x.n })).sort((a, b) => (b.n - a.n) || a.name.localeCompare(b.name));
 }
 function renderFeederNetwork(entries, s, e) {
   if (document.getElementById('ccKpis')) entries = ccFeederEntries();
@@ -9825,22 +9844,23 @@ function renderFeederNetwork(entries, s, e) {
   h += `<circle cx="${cx}" cy="${cy}" r="26" fill="url(#ccG)"/><circle cx="${cx}" cy="${cy}" r="9" fill="#22d3ee"/><circle cx="${cx}" cy="${cy}" r="9" fill="none" stroke="#22d3ee" stroke-width="2"><animate attributeName="r" values="9;48" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".9;0" dur="2.4s" repeatCount="indefinite"/></circle><circle cx="${cx}" cy="${cy}" r="9" fill="none" stroke="#f472b6" stroke-width="2"><animate attributeName="r" values="9;48" dur="2.4s" begin="1.2s" repeatCount="indefinite"/><animate attributeName="opacity" values=".9;0" dur="2.4s" begin="1.2s" repeatCount="indefinite"/></circle><text x="${cx}" y="${cy + 24}" text-anchor="middle" font-size="10" fill="#c4b5fd">AEDC GRID · ABUJA</text>`;
   nodes.forEach(nd => {
     const dim = ccSel && ccSel !== nd.f, sel = ccSel === nd.f, lab = nd.f.length > 26 ? nd.f.slice(0, 25) + '…' : nd.f;
-    h += `<g class="nd" data-f="${esc(nd.f)}" onclick="ccPick(this.dataset.f)" opacity="${dim ? .3 : 1}"><title>${esc(nd.f)} · ${nd.d.total} captures · ${nd.dts.length} DTs</title>`
+    h += `<g class="nd" data-f="${esc(nd.f)}" onclick="ccPick(this.dataset.f)" opacity="${dim ? .3 : 1}"><title>${esc(nd.f)} · ${nd.d.total} captures${nd.d.dss > 0 ? ' · ' + nd.d.dss + ' DTs captured' : ''}</title>`
       + `<circle cx="${nd.x.toFixed(1)}" cy="${nd.y.toFixed(1)}" r="${nd.r + 9}" fill="${nd.c}" fill-opacity=".2"/>`
       + `<circle class="c" cx="${nd.x.toFixed(1)}" cy="${nd.y.toFixed(1)}" r="${nd.r}" fill="${nd.c}" stroke="${sel ? '#fff' : 'none'}" stroke-width="3"/>`
       + (sel ? `<circle cx="${nd.x.toFixed(1)}" cy="${nd.y.toFixed(1)}" r="${nd.r}" fill="none" stroke="#fff" stroke-width="2"><animate attributeName="r" values="${nd.r + 2};${nd.r + 16}" dur="1.2s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0" dur="1.2s" repeatCount="indefinite"/></circle>` : '')
       + `<text x="${nd.x.toFixed(1)}" y="${(nd.y + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="800" fill="#0b0720">${nd.d.total}</text>`
       + `<text x="${nd.x.toFixed(1)}" y="${(nd.y + nd.r + 14).toFixed(1)}" text-anchor="middle" font-size="10" fill="#e9e5ff">${esc(lab)}</text>`
-      + `<text x="${nd.x.toFixed(1)}" y="${(nd.y + nd.r + 26).toFixed(1)}" text-anchor="middle" font-size="9" fill="#a5b4fc">${nd.dts.length} DT${nd.dts.length === 1 ? '' : 's'}</text></g>`;
+      + `<text x="${nd.x.toFixed(1)}" y="${(nd.y + nd.r + 26).toFixed(1)}" text-anchor="middle" font-size="9" fill="#a5b4fc">${nd.d.dss > 0 ? nd.d.dss + ' DT' + (nd.d.dss === 1 ? '' : 's') : ''}</text></g>`;
   });
   net.innerHTML = h + '</svg>';
   det.innerHTML = nodes.filter(nd => !ccSel || ccSel === nd.f).map(nd => {
-    const chips = nd.dts.slice(0, 40).map(t => `<span class="cc-dt ${t.worked ? 'on' : 'off'}" title="${esc(t.id)}${t.worked ? '' : ' · allocated, no capture in this report'}">${esc(t.name)}${t.worked ? ` <i>×${t.n}</i>` : ''}</span>`).join('')
-      + (nd.dts.length > 40 ? `<span class="cc-none">+${nd.dts.length - 40} more</span>` : '')
-      || '<span class="cc-none no-print">No DT IDs found for this feeder — upload data with a DT ID column and/or a DT lookup</span>';
-    return `<div class="cc-card" style="--k:${nd.c}"><div class="cc-ct"><b>⚡ ${esc(nd.f)}</b><span>${nd.d.total}</span></div><div class="cc-sub">${esc([...nd.d.names].join(', '))}</div><div>${chips}</div></div>`;
+    const n = nd.dts.length, chips = nd.dts.slice(0, 300).map(t => `<span class="cc-dt on" title="${esc(t.id)}">${esc(t.name)} <i>×${t.n}</i></span>`).join('') + (n > 300 ? `<span class="cc-none">+${n - 300} more</span>` : '');
+    const drop = n ? `<details class="cc-more"><summary>DT names captured (${n})</summary><div style="margin-top:6px">${chips}</div></details>` : '';
+    const pill = nd.d.dss > 0 ? `<span class="cc-pill">${nd.d.dss} DT${nd.d.dss === 1 ? '' : 's'} captured</span>` : '';
+    return `<div class="cc-card" style="--k:${nd.c}"><div class="cc-ct"><b>⚡ ${esc(nd.f)}</b><span>${nd.d.total}</span></div><div class="cc-sub">${esc([...nd.d.names].join(', '))}</div>${pill}${drop}</div>`;
   }).join('');
-  if (hint) hint.textContent = ccSel ? `Showing ${ccSel} · tap the node again to show all` : `${Object.keys(dtLookup).length} DT names in lookup`;
+  const worked = new Set(); nodes.forEach(nd => nd.dts.forEach(t => worked.add(t.id.toLowerCase())));
+  if (hint) hint.textContent = ccSel ? `Showing ${ccSel} · tap the node again to show all` : (worked.size ? `${worked.size} DT names captured in this report` : '');
 }
 function ccFilterRows() {
   document.querySelectorAll('#feederSummaryBody tr[data-feeder]').forEach(tr => { tr.style.display = (!ccSel || tr.dataset.feeder === ccSel) ? '' : 'none'; });
@@ -9865,7 +9885,7 @@ function ccRows() {
 }
 function ccFeederEntries() {
   const map = {};
-  ccRows().forEach(r => { if (!r.f) return; const m = map[r.f] || (map[r.f] = { names: new Set(), total: 0 }); m.names.add(r.fullname); m.total += r.total || 0; });
+  ccRows().forEach(r => { if (!r.f) return; const m = map[r.f] || (map[r.f] = { names: new Set(), total: 0, dss: 0 }); m.names.add(r.fullname); m.total += r.total || 0; m.dss += r.dss || 0; });
   return Object.entries(map).sort((a, b) => b[1].total - a[1].total);
 }
 function ccView() { return ccRows().filter(r => !ccSel || r.f === ccSel); }
@@ -9963,7 +9983,7 @@ function ccRenderAll() {
 <div class="card" style="grid-column:1/-1;--k:#a78bfa"><h2 id="ccAttT">Attendance</h2><div class="chips" id="ccCh"></div></div>
 <div class="card" id="ccAl3c" style="grid-column:1/-1;--k:#fb923c"><h2>📣 Issue log reminder</h2><div id="ccAl3"></div></div>
 </div>`;
-  ccAlerts(); ccDraw();
+  ccSnapshot(); ccAlerts(); ccDraw();
 }
 function ccSetG(g) { ccG = g; ccSel = null; ccRenderAll(); }
 function ccSetST(k) { ccST = k; ccRenderAll(); }
@@ -9974,13 +9994,9 @@ function ccExportScript(clone) {
   try {
     if (!clone.classList.contains('cc-on')) return '';
     const rows = g => ((reportResults[g] && reportResults[g].results) || []).map(r => ({ username: r.username, fullname: r.fullname, dss: r.dss || 0, ht: r.ht || 0, cust: r.cust || 0, lt: r.lt || 0, issues: r.issues || 0, total: r.total || 0, status: r.status, excuseRemark: r.excuseRemark || '', excuseApproval: r.excuseApproval || '', zeroRemark: r.zeroRemark || '', savedFeeder: (r.total > 0 && r.status === 'present') ? ccFeeder(r) : '' }));
-    const rr = { aedc: { results: rows('aedc') }, bss: { results: rows('bss') }, nysc: { results: rows('nysc') }, dateKey: reportResults.dateKey, endDateKey: reportResults.endDateKey, formattedDate: reportResults.formattedDate };
-    const [s, e] = ccRange(), from = s ? s.substring(0, 10) : null, to = e ? e.substring(0, 10) : from, dd = {}, worked = new Set(), feeders = new Set();
-    CC_GR.forEach(g => rr[g].results.forEach(r => { if (r.savedFeeder) feeders.add(r.savedFeeder.toLowerCase()); }));
-    Object.entries(dtDayData).forEach(([dk, fm]) => { if (dk !== 'unknown' && from && to && (dk < from || dk > to)) return; dd[dk] = fm; Object.values(fm).forEach(m => Object.keys(m).forEach(id => worked.add(id.toLowerCase()))); });
-    const dt = {}; Object.entries(dtLookup).forEach(([k, v]) => { if (worked.has(k) || (v.feeder && feeders.has(String(v.feeder).toLowerCase()))) dt[k] = v; });
+    const rr = { aedc: { results: rows('aedc') }, bss: { results: rows('bss') }, nysc: { results: rows('nysc') }, dateKey: reportResults.dateKey, endDateKey: reportResults.endDateKey, formattedDate: reportResults.formattedDate, ccDt: reportResults.ccDt || null };
     const g = id => { const x = document.getElementById(id); return x ? x.innerHTML : ''; }, c3 = document.getElementById('ccAl3c');
-    const payload = { on: true, target: ccTarget(), rr, dt, dtDay: dd, al1: g('ccAl1'), al2: g('ccAl2'), al3: g('ccAl3'), al3show: !c3 || c3.style.display !== 'none' };
+    const payload = { on: true, target: ccTarget(), rr, al1: g('ccAl1'), al2: g('ccAl2'), al3: g('ccAl3'), al3show: !c3 || c3.style.display !== 'none' };
     const stubs = "var reportResults=CC_EXPORT.rr,fvSessionOverrides={},feederLookup={},userFeederData={},firebaseInitialized=false;"
       + "function escapeHtml(s){return String(s==null?'':s).replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]})}"
       + "function perfDailyTarget(){return CC_EXPORT.target}function getTopFeeder(){return ''}function showStatus(){}function updateDashboard(){}async function loadFeederLookupFromCloud(){}";
@@ -10005,7 +10021,7 @@ function ccApplyMode(on) {
 (function ccInit() {
   const st = document.createElement('style'); st.id = 'ccStyle'; st.textContent = CC_CSS; document.head.appendChild(st);
   let on = true;
-  if (window.CC_EXPORT) { dtLookup = CC_EXPORT.dt || {}; dtDayData = CC_EXPORT.dtDay || {}; on = !!CC_EXPORT.on; }
+  if (window.CC_EXPORT) { dtLookup = {}; dtDayData = {}; on = !!CC_EXPORT.on; }
   else { try { const o = JSON.parse(localStorage.getItem('eih_dtLookup') || '{}'); if (o && typeof o === 'object') dtLookup = o; } catch (e) {} try { on = localStorage.getItem('eih_cc') !== '0'; } catch (e) {} }
   ccStatus();
   ccApplyMode(on);
