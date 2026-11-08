@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Lock, MessageCircle, Unlock } from "lucide-react";
 import { addRow, patchMany, removeMany, updateRow } from "@/lib/field/db";
@@ -12,6 +12,17 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Section, Stat, selectCls } from "./common";
 import { useConfirm } from "./ConfirmDialog";
+import { DtCheckDialog } from "./DtCheckDialog";
+
+const DEFAULT_KEY = "eih_alloc_default";
+type FeederDefault = { feederId: string; statusF: string };
+const readDefault = (): FeederDefault | null => {
+  try {
+    if (typeof window === "undefined") return null;
+    const v = JSON.parse(window.localStorage.getItem(DEFAULT_KEY) || "null");
+    return v && typeof v.feederId === "string" ? { feederId: v.feederId, statusF: typeof v.statusF === "string" ? v.statusF : "assigned" } : null;
+  } catch { return null; }
+};
 
 export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: boolean }) {
   const refresh = useRefresh();
@@ -26,6 +37,27 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   useEffect(() => { setSel(new Set()); }, [feederId]);
+  const [checkOpen, setCheckOpen] = useState(false);
+  // "Keep as default": this feeder and filter (for example Assigned (Ongoing)) open first, every time, on this device.
+  const [def, setDef] = useState<FeederDefault | null>(null);
+  const appliedDef = useRef(false);
+  useEffect(() => {
+    const d = readDefault();
+    setDef(d);
+    if (d && !appliedDef.current && m.feederById.has(d.feederId)) { appliedDef.current = true; setFeederId(d.feederId); setStatusF(d.statusF); }
+  }, [m.feeders.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const isDefault = !!def && def.feederId === feederId && def.statusF === statusF;
+  function saveDefault() {
+    const d = { feederId, statusF };
+    try { window.localStorage.setItem(DEFAULT_KEY, JSON.stringify(d)); } catch { /* private mode: not saved */ }
+    setDef(d);
+    toast.success("Saved as your default", { description: "This feeder and filter will open first next time." });
+  }
+  function clearDefault() {
+    try { window.localStorage.removeItem(DEFAULT_KEY); } catch { /* ignore */ }
+    setDef(null);
+    toast.message("Default cleared");
+  }
 
   const feederMatches = useMemo(() => {
     const t = fq.trim().toLowerCase();
@@ -289,36 +321,59 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
     <div className="grid gap-4 md:gap-6 xl:grid-cols-[1fr_300px]">
       <div className="space-y-4">
         <Section title="Select feeder">
-          <div className="flex flex-wrap gap-2">
-            <Input className="w-full sm:w-56" placeholder="Search feeder name or ID" value={fq} onChange={(e) => searchFeeder(e.target.value)} />
-            <select className={selectCls + " w-full sm:w-auto sm:min-w-72 font-bold"} value={feederId} onChange={(e) => setFeederId(e.target.value)}>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">1 · Feeder</div>
+              <div className="flex flex-wrap gap-2">
+                <Input className="h-11 w-full sm:w-56" placeholder="Search feeder name or ID" value={fq} onChange={(e) => searchFeeder(e.target.value)} />
+                <select className={selectCls + " h-11 w-full font-bold sm:w-auto sm:min-w-72"} value={feederId} onChange={(e) => setFeederId(e.target.value)}>
               {!feederMatches.some((f) => f.feeder_id === feederId) && feeder && <option value={feederId}>{feeder.feeder_name} ({feeder.feeder_id})</option>}
               {feederMatches.map((f) => {
                 const s = feederStats(m, f.feeder_id);
                 return <option key={f.feeder_id} value={f.feeder_id}>{f.locked ? "🔒 " : ""}{f.feeder_name} ({f.feeder_id}) · {s.unassigned} not assigned</option>;
               })}
             </select>
-            {fq.trim() && <span className="self-center text-xs text-muted-foreground">{feederMatches.length} feeder{feederMatches.length === 1 ? "" : "s"} match</span>}
-            <select className={selectCls + " w-full sm:w-auto"} value={statusF} onChange={(e) => setStatusF(e.target.value)}>
+                {fq.trim() && <span className="self-center text-xs text-muted-foreground">{feederMatches.length} feeder{feederMatches.length === 1 ? "" : "s"} match</span>}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant={isDefault ? "default" : "outline"} className="h-11" onClick={isDefault ? clearDefault : saveDefault}>
+                  {isDefault ? "📌 Default saved · tap to clear" : "📌 Keep this feeder + filter as my default"}
+                </Button>
+                {def && !isDefault && <span className="text-xs text-muted-foreground">Opens on: {m.feederById.get(def.feederId)?.feeder_name ?? def.feederId}</span>}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">2 · Show</div>
+              <div className="-mx-1 overflow-x-auto px-1 pb-1">
+                <div className="inline-flex overflow-hidden rounded-md border text-sm font-bold whitespace-nowrap" role="group" aria-label="Assigned or not assigned">
+              {([["all", "All", stats.total], ["assigned", "Assigned (Ongoing)", stats.assigned], ["pending", "Not assigned", stats.unassigned], ...(needAuthCount ? [["needsauth", "Needs authorization", needAuthCount] as const] : []), ...(staleRes.stale.length ? [["stale", "Not seen 3 dates", staleRes.stale.length] as const] : [])] as const).map(([v, label, n]) => (
+                <button key={v} type="button" onClick={() => setStatusF(v)} className={"min-h-11 px-3 " + (statusF === v ? "bg-foreground text-background" : "hover:bg-muted")}>{label} <span className="opacity-70">{n}</span></button>
+              ))}
+            </div>
+
+              </div>
+              <select className={selectCls + " h-11 w-full sm:w-auto"} value={statusF} onChange={(e) => setStatusF(e.target.value)}>
               <option value="all">All DTs</option>
               <option value="pending">Pending allocation</option>
               <option value="nocapture">No capture yet</option>
               {DT_STATUSES.filter((s) => s.value !== "unassigned").map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
-            <Input className="w-full sm:w-56" placeholder="Search DT name or ID" value={q} onChange={(e) => setQ(e.target.value)} />
-            <div className="inline-flex overflow-hidden rounded-md border text-sm font-bold" role="group" aria-label="Assigned or not assigned">
-              {([["all", "All", stats.total], ["assigned", "Assigned (Ongoing)", stats.assigned], ["pending", "Not assigned", stats.unassigned], ...(needAuthCount ? [["needsauth", "Needs authorization", needAuthCount] as const] : []), ...(staleRes.stale.length ? [["stale", "Not seen 3 dates", staleRes.stale.length] as const] : [])] as const).map(([v, label, n]) => (
-                <button key={v} type="button" onClick={() => setStatusF(v)} className={"px-3 py-1.5 " + (statusF === v ? "bg-foreground text-background" : "hover:bg-muted")}>{label} <span className="opacity-70">{n}</span></button>
-              ))}
             </div>
-            <Button variant="outline" size="sm" className="h-9" onClick={() => setSel(new Set(m.dts.filter((d) => d.feeder_id === feederId && d.status === "assigned").map((d) => d.dt_id)))} disabled={!stats.assigned}>
+            <div className="space-y-2">
+              <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">3 · Find DTs and act</div>
+              <div className="flex flex-wrap gap-2">
+                <Input className="h-11 w-full sm:w-56" placeholder="Search DT name or ID" value={q} onChange={(e) => setQ(e.target.value)} />
+                <Button variant="outline" className="h-11" onClick={() => setSel(new Set(m.dts.filter((d) => d.feeder_id === feederId && d.status === "assigned").map((d) => d.dt_id)))} disabled={!stats.assigned}>
               Select all assigned ({stats.assigned})
             </Button>
-            {isAdmin && feeder && (
-              <Button variant={feeder.locked ? "default" : "outline"} size="sm" className="h-9" onClick={toggleLock}>
+                <Button className="h-11" onClick={() => setCheckOpen(true)}>🔎 Check DTs by date</Button>
+                {isAdmin && feeder && (
+              <Button variant={feeder.locked ? "default" : "outline"} className="h-11" onClick={toggleLock}>
                 {feeder.locked ? <><Lock /> Locked: unlock</> : <><Unlock /> Lock feeder</>}
               </Button>
             )}
+              </div>
+            </div>
           </div>
           {feeder?.locked && <p className="mt-2 rounded bg-warning/20 p-2 text-xs font-bold">🔒 Locked: captures on DTs not allocated to the enumerator are flagged under Capture Alerts.</p>}
           {feeder && <p className="mt-2 text-xs text-muted-foreground">Area: {feeder.area ?? "—"} · Type: {feeder.feeder_type ?? "—"} · Start date: {fmtDate(feeder.start_date)}</p>}
@@ -440,6 +495,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
 
       {allocDt && <AllocateDialog m={m} dt={allocDt} openByEnum={openByEnum} onClose={() => setAllocDt(null)} />}
       {statusDt && <StatusDialog dt={statusDt} onClose={() => setStatusDt(null)} />}
+      <DtCheckDialog m={m} feederId={feederId} open={checkOpen} onOpenChange={setCheckOpen} onComplete={askBulkComplete} busy={bulkBusy} />
       {dialog}
     </div>
   );

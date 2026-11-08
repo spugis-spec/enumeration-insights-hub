@@ -1144,6 +1144,7 @@
                           <button type="button" onclick="refreshDashboard()" class="hero-pill">&#128260; Refresh</button>
                           <button type="button" id="controlsPanelToggleBtn" onclick="toggleControlsPanel()" class="hero-pill">&#9776; Menu · Filters, Options &amp; Tools</button>
                           <button type="button" id="ccToggleBtn" onclick="ccApplyMode(!document.getElementById('dashboardCapture').classList.contains('cc-on'))" class="hero-pill no-print" title="Switch between the Command Center look and the classic dashboard">🕰️ Classic view</button>
+                          <select id="ccThemeSel" class="hero-pill no-print" onchange="ccSetTheme(this.value)" title="Change the Command Center colour theme (the export keeps what you pick)" style="background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.35);cursor:pointer"><option value="dark" style="color:#111">🌙 Dark</option><option value="light" style="color:#111">☀️ Light</option><option value="ocean" style="color:#111">🌊 Ocean</option><option value="sunset" style="color:#111">🌅 Sunset</option></select>
                           <button type="button" id="heroWhatsAppBtn" onclick="shareHTMLToWhatsApp()" class="hero-pill hero-pill-wa" title="Export this dashboard as HTML and send it straight to WhatsApp">
                             <svg viewBox="0 0 32 32" width="17" height="17" aria-hidden="true" focusable="false"><path fill="#25D366" d="M16 0C7.2 0 0 7.2 0 16c0 2.8.7 5.5 2.1 7.9L0 32l8.3-2.2c2.3 1.3 5 1.9 7.7 1.9 8.8 0 16-7.2 16-16S24.8 0 16 0z"/><path fill="#fff" d="M24.3 20.2c-.4 1-2 1.9-2.8 2-.7.1-1.6.1-2.6-.2-3.9-1.2-6.4-5-6.6-5.3-.2-.3-1.6-2.1-1.6-4s1-2.8 1.4-3.2c.3-.3.8-.4 1-.4h.7c.2 0 .5 0 .8.6.3.7 1 2.5 1.1 2.7.1.2.1.4 0 .7-.1.2-.2.4-.4.6l-.4.5c-.2.2-.3.4-.2.7.2.4.8 1.5 1.8 2.4 1.2 1.2 2.3 1.6 2.6 1.7.3.1.5.1.7-.1.2-.2.8-.9 1-1.2.2-.3.4-.3.7-.2.3.1 2 1 2.4 1.2.3.2.5.2.6.4.1.2.1.9-.2 1.9z"/></svg>
                             <span>Share to WhatsApp</span>
@@ -4988,7 +4989,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <style>${inlineCSS}${typeof CC_CSS==='string'?CC_CSS:''}</style>
 </head>
-<body${clone.classList.contains('cc-on')?' class="cc-mode"':''}>
+<body${clone.classList.contains('cc-on')?' class="cc-mode" data-cc-theme="'+(clone.getAttribute('data-cc-theme')||'dark')+'"':''}>
   <div style="max-width:1100px;margin:0 auto;">
     ${clone.outerHTML}
     ${typeof ccExportScript==='function'?ccExportScript(clone):''}
@@ -9685,7 +9686,7 @@ const CC_CSS = `
 #ccBg .hl{fill:#fbbf24;fill-opacity:.15;stroke:#fbbf24;stroke-opacity:.5}
 #ccBg text{fill:#c4b5fd;fill-opacity:.6}
 #dashboardCapture:not(.cc-on) #ccRoot,#dashboardCapture:not(.cc-on) #ccBg,#dashboardCapture:not(.cc-on) .cc-eyebrow{display:none}
-#dashboardCapture.cc-on{--bg:#08051a;--p:#1c1650;--p2:#2a2370;--tx:#e6edf7;--mu:#8aa0c0;--ln:#3b3490;--ac:#22d3ee;--ok:#34d399;--wa:#fbbf24;--er:#f87171;position:relative;isolation:isolate;padding:14px;color:#e6edf7;font:14px/1.45 'DM Sans',system-ui,sans-serif}
+#dashboardCapture.cc-on{--bg:#08051a;--p:#1c1650;--p2:#2a2370;--tx:#e6edf7;--mu:#8aa0c0;--ln:#3b3490;--ac:#22d3ee;--ok:#34d399;--wa:#fbbf24;--er:#f87171;position:relative;isolation:isolate;padding:14px;color:var(--tx);font:14px/1.45 'DM Sans',system-ui,sans-serif;--cc-card:#1c1650;--cc-cardln:#4a42a8;--cc-cardtx:#fff;--cc-sub:#d4d9ff;--cc-shadow:#000}
 #dashboardCapture.cc-on>:not(.gis-hero):not(#ccRoot):not(#ccBg){display:none!important}
 #dashboardCapture.cc-on>.gis-hero,#dashboardCapture.cc-on>#ccRoot{position:relative;z-index:1}
 #ccBg{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
@@ -9703,16 +9704,36 @@ body.cc-mode{background-color:#08051a!important;background-image:radial-gradient
 #ccRoot summary::-webkit-details-marker{display:none}#ccRoot details[open]>summary::after{content:' ▲'}#ccRoot details:not([open])>summary::after{content:' ▼'}
 #ccRoot .cc-classic{margin-top:8px;background:#fff;color:#1f2937;border-radius:10px;padding:8px;overflow-x:auto}
 #ccRoot .cc-classic table{min-width:0;width:100%;color:#1f2937}#ccRoot .cc-classic th{position:static;background:transparent;color:inherit;text-transform:none;letter-spacing:0;font-size:inherit;padding:inherit}#ccRoot .cc-classic td{border-bottom:0}#ccRoot .cc-classic tr:hover td{background:transparent}
-.cc-pill{display:inline-block;margin:0 0 6px;padding:1px 9px;border-radius:99px;font-size:.7rem;font-weight:700;background:color-mix(in srgb,var(--k) 40%,#1c1650);border:1px solid var(--k);color:#fff}
+.cc-pill{display:inline-block;margin:0 0 6px;padding:1px 9px;border-radius:99px;font-size:.7rem;font-weight:700;background:color-mix(in srgb,var(--k) 40%,var(--cc-card));border:1px solid var(--k);color:var(--cc-cardtx)}
 #ccRoot .cc-card summary{padding:3px 10px;font-size:.7rem}#ccRoot .cc-card details.cc-more{margin-top:4px}
-#ccRoot table{color:#e6edf7}#ccRoot th{background:#1c1650}#ccRoot .tools{align-items:center}
+#dashboardCapture:not(.cc-on) #ccThemeSel{display:none}
+#dashboardCapture.cc-on[data-cc-theme="light"]{--bg:#eef2fb;--p:#ffffff;--p2:#eef1fb;--tx:#1e1b4b;--mu:#5b6490;--ln:#d3daf0;--ac:#0891b2;--ok:#059669;--wa:#b45309;--er:#dc2626;--cc-card:#ffffff;--cc-cardln:#d3daf0;--cc-cardtx:#1e1b4b;--cc-sub:#4b5280;--cc-shadow:#9aa3d0}
+#dashboardCapture.cc-on[data-cc-theme="ocean"]{--bg:#0b3a5b;--p:#12527f;--p2:#1b6a9e;--tx:#f0f9ff;--mu:#bae6fd;--ln:#3b8bbf;--ac:#67e8f9;--cc-card:#0f4a75;--cc-cardln:#4aa0d6;--cc-cardtx:#f0f9ff;--cc-sub:#d3effc;--cc-shadow:#001a2e}
+#dashboardCapture.cc-on[data-cc-theme="sunset"]{--bg:#4a1d3d;--p:#6a2a52;--p2:#853a66;--tx:#fff7ed;--mu:#fdba74;--ln:#b4567f;--ac:#fbbf24;--cc-card:#5c2548;--cc-cardln:#c4648c;--cc-cardtx:#fff7ed;--cc-sub:#fde2c8;--cc-shadow:#200a18}
+#dashboardCapture.cc-on[data-cc-theme="light"] .gis-hero{background:linear-gradient(135deg,#6366f1 0%,#ec4899 55%,#f59e0b 100%);box-shadow:0 14px 34px -16px #6366f1}
+#dashboardCapture.cc-on[data-cc-theme="ocean"] .gis-hero{background:linear-gradient(135deg,#0ea5e9,#6366f1 60%,#0f766e);box-shadow:0 14px 34px -16px #0ea5e9}
+#dashboardCapture.cc-on[data-cc-theme="sunset"] .gis-hero{background:linear-gradient(135deg,#f97316,#db2777 55%,#7c3aed);box-shadow:0 14px 34px -16px #db2777}
+body.cc-mode[data-cc-theme="light"]{background-color:#eef2fb!important;background-image:radial-gradient(60% 50% at 8% 0%,#a5b4fc77,transparent),radial-gradient(50% 45% at 98% 8%,#f9a8d477,transparent),radial-gradient(60% 50% at 85% 100%,#67e8f977,transparent),radial-gradient(40% 40% at 0% 92%,#fde68a88,transparent),linear-gradient(#1e1b4b0d 1px,transparent 1px),linear-gradient(90deg,#1e1b4b0d 1px,transparent 1px)!important}
+body.cc-mode[data-cc-theme="ocean"]{background-color:#0b3a5b!important;background-image:radial-gradient(60% 50% at 8% 0%,#22d3ee55,transparent),radial-gradient(50% 45% at 98% 8%,#6366f166,transparent),radial-gradient(60% 50% at 85% 100%,#38bdf855,transparent),radial-gradient(40% 40% at 0% 92%,#34d39944,transparent),linear-gradient(#ffffff10 1px,transparent 1px),linear-gradient(90deg,#ffffff10 1px,transparent 1px)!important}
+body.cc-mode[data-cc-theme="sunset"]{background-color:#4a1d3d!important;background-image:radial-gradient(60% 50% at 8% 0%,#f59e0b55,transparent),radial-gradient(50% 45% at 98% 8%,#ec489966,transparent),radial-gradient(60% 50% at 85% 100%,#7c3aed55,transparent),radial-gradient(40% 40% at 0% 92%,#fb923c44,transparent),linear-gradient(#ffffff10 1px,transparent 1px),linear-gradient(90deg,#ffffff10 1px,transparent 1px)!important}
+#dashboardCapture[data-cc-theme="light"] #ccBg .ccbgsvg{opacity:1}
+#dashboardCapture[data-cc-theme="light"] #ccBg .rd{stroke:#6d28d9;stroke-opacity:.3}#dashboardCapture[data-cc-theme="light"] #ccBg .rd.m{stroke:#be185d;stroke-opacity:.38}#dashboardCapture[data-cc-theme="light"] #ccBg .th{stroke:#0891b2;stroke-opacity:.3}
+#dashboardCapture[data-cc-theme="light"] #ccBg .wt{fill:#06b6d4;fill-opacity:.2;stroke:#0891b2;stroke-opacity:.5}#dashboardCapture[data-cc-theme="light"] #ccBg .hl{fill:#f59e0b;fill-opacity:.2;stroke:#d97706;stroke-opacity:.5}
+#dashboardCapture[data-cc-theme="light"] #ccBg text{fill:#4338ca;fill-opacity:.75}
+#dashboardCapture[data-cc-theme="ocean"] #ccBg text{fill:#bae6fd;fill-opacity:.8}#dashboardCapture[data-cc-theme="sunset"] #ccBg text{fill:#fed7aa;fill-opacity:.8}
+#dashboardCapture[data-cc-theme="light"] #ccRoot .bd.ok{background:#10b98122;color:#047857}#dashboardCapture[data-cc-theme="light"] #ccRoot .bd.no{background:#f59e0b2a;color:#92400e}#dashboardCapture[data-cc-theme="light"] #ccRoot .bd.ab{background:#ef44441f;color:#b91c1c}#dashboardCapture[data-cc-theme="light"] #ccRoot .bd.su{background:#6366f11f;color:#3730a3}
+#dashboardCapture[data-cc-theme="light"] #ccRoot .row:hover,#dashboardCapture[data-cc-theme="light"] #ccRoot tr:hover td{background:#1e1b4b0d}
+#dashboardCapture[data-cc-theme="light"] #ccRoot .kpi b{text-shadow:none}
+#dashboardCapture[data-cc-theme="light"] #ccRoot .card{background:color-mix(in srgb,var(--p) 90%,transparent)}
+#dashboardCapture[data-cc-theme="light"] #ccRoot tfoot td{color:#b45309}
+#ccRoot table{color:var(--tx)}#ccRoot th{background:var(--p)}#ccRoot .tools{align-items:center}
 .cc-svg{width:100%;max-height:380px;display:block}.cc-svg .nd{cursor:pointer;transition:opacity .2s}.cc-svg .nd:hover circle.c{filter:brightness(1.25)}
 .cc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px}
-.cc-card{background:#1c1650;border:1px solid #4a42a8;border-left:4px solid var(--k);border-radius:12px;padding:10px 12px;color:#fff;box-shadow:0 6px 18px -10px #000}
+.cc-card{background:var(--cc-card);border:1px solid var(--cc-cardln);border-left:4px solid var(--k);border-radius:12px;padding:10px 12px;color:var(--cc-cardtx);box-shadow:0 6px 18px -10px var(--cc-shadow)}
 .cc-ct{display:flex;justify-content:space-between;gap:8px;font-size:.85rem}.cc-ct span{color:var(--k);font-weight:800;font-family:'Space Mono',monospace;white-space:nowrap}
-.cc-sub{font-size:.72rem;color:#d4d9ff;margin:3px 0 8px}
+.cc-sub{font-size:.72rem;color:var(--cc-sub);margin:3px 0 8px}
 .cc-dt{display:inline-block;margin:2px 3px 2px 0;padding:2px 9px;border-radius:99px;font-size:.68rem;font-weight:600}
-.cc-dt.on{background:color-mix(in srgb,var(--k) 40%,#1c1650);border:1px solid var(--k);color:#fff}.cc-dt.off{background:#2a2370;border:1px dashed #a5b4fc;color:#e6e0ff}.cc-dt i{font-style:normal;opacity:.8}
+.cc-dt.on{background:color-mix(in srgb,var(--k) 40%,var(--cc-card));border:1px solid var(--k);color:var(--cc-cardtx)}.cc-dt.off{background:var(--p2);border:1px dashed var(--mu);color:var(--tx)}.cc-dt i{font-style:normal;opacity:.8}
 .cc-none{font-size:.68rem;color:#94a3b8;font-style:italic}.cc-empty{color:#a5b4fc;text-align:center;padding:14px}.cc-hint{font-size:.7rem;color:#c4b5fd;text-transform:none;letter-spacing:0;font-weight:600}
 `;
 let dtLookup = {}, dtDayData = {}, ccSeen = new WeakSet(), ccSel = null, ccLast = null;
@@ -9839,18 +9860,18 @@ function renderFeederNetwork(entries, s, e) {
     return { f, d, dts, x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a), r: Math.min(34, 14 + Math.sqrt(d.total) * 1.3), c: CC_COL[i % CC_COL.length] };
   });
   let h = `<svg viewBox="0 0 600 370" class="cc-svg" role="img" aria-label="Feeder network"><defs><radialGradient id="ccG"><stop offset="0" stop-color="#22d3ee" stop-opacity=".35"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></radialGradient></defs>`;
-  [55, 105, 160].forEach(r => h += `<ellipse cx="${cx}" cy="${cy}" rx="${r * 1.35}" ry="${r * .85}" fill="none" stroke="#ffffff22" stroke-dasharray="3 5"/>`);
+  [55, 105, 160].forEach(r => h += `<ellipse cx="${cx}" cy="${cy}" rx="${r * 1.35}" ry="${r * .85}" fill="none" stroke="var(--ln)" stroke-dasharray="3 5"/>`);
   nodes.forEach(nd => h += `<line x1="${cx}" y1="${cy}" x2="${nd.x.toFixed(1)}" y2="${nd.y.toFixed(1)}" stroke="${nd.c}" stroke-opacity=".6" stroke-width="${1 + Math.min(4, nd.d.total / 150)}" stroke-dasharray="6 4"><animate attributeName="stroke-dashoffset" from="20" to="0" dur="1.5s" repeatCount="indefinite"/></line>`);
-  h += `<circle cx="${cx}" cy="${cy}" r="26" fill="url(#ccG)"/><circle cx="${cx}" cy="${cy}" r="9" fill="#22d3ee"/><circle cx="${cx}" cy="${cy}" r="9" fill="none" stroke="#22d3ee" stroke-width="2"><animate attributeName="r" values="9;48" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".9;0" dur="2.4s" repeatCount="indefinite"/></circle><circle cx="${cx}" cy="${cy}" r="9" fill="none" stroke="#f472b6" stroke-width="2"><animate attributeName="r" values="9;48" dur="2.4s" begin="1.2s" repeatCount="indefinite"/><animate attributeName="opacity" values=".9;0" dur="2.4s" begin="1.2s" repeatCount="indefinite"/></circle><text x="${cx}" y="${cy + 24}" text-anchor="middle" font-size="10" fill="#c4b5fd">AEDC GRID · ABUJA</text>`;
+  h += `<circle cx="${cx}" cy="${cy}" r="26" fill="url(#ccG)"/><circle cx="${cx}" cy="${cy}" r="9" fill="#22d3ee"/><circle cx="${cx}" cy="${cy}" r="9" fill="none" stroke="#22d3ee" stroke-width="2"><animate attributeName="r" values="9;48" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".9;0" dur="2.4s" repeatCount="indefinite"/></circle><circle cx="${cx}" cy="${cy}" r="9" fill="none" stroke="#f472b6" stroke-width="2"><animate attributeName="r" values="9;48" dur="2.4s" begin="1.2s" repeatCount="indefinite"/><animate attributeName="opacity" values=".9;0" dur="2.4s" begin="1.2s" repeatCount="indefinite"/></circle><text x="${cx}" y="${cy + 24}" text-anchor="middle" font-size="10" fill="var(--mu)">AEDC GRID · ABUJA</text>`;
   nodes.forEach(nd => {
     const dim = ccSel && ccSel !== nd.f, sel = ccSel === nd.f, lab = nd.f.length > 26 ? nd.f.slice(0, 25) + '…' : nd.f;
     h += `<g class="nd" data-f="${esc(nd.f)}" onclick="ccPick(this.dataset.f)" opacity="${dim ? .3 : 1}"><title>${esc(nd.f)} · ${nd.d.total} captures${nd.d.dss > 0 ? ' · ' + nd.d.dss + ' DTs captured' : ''}</title>`
       + `<circle cx="${nd.x.toFixed(1)}" cy="${nd.y.toFixed(1)}" r="${nd.r + 9}" fill="${nd.c}" fill-opacity=".2"/>`
-      + `<circle class="c" cx="${nd.x.toFixed(1)}" cy="${nd.y.toFixed(1)}" r="${nd.r}" fill="${nd.c}" stroke="${sel ? '#fff' : 'none'}" stroke-width="3"/>`
-      + (sel ? `<circle cx="${nd.x.toFixed(1)}" cy="${nd.y.toFixed(1)}" r="${nd.r}" fill="none" stroke="#fff" stroke-width="2"><animate attributeName="r" values="${nd.r + 2};${nd.r + 16}" dur="1.2s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0" dur="1.2s" repeatCount="indefinite"/></circle>` : '')
+      + `<circle class="c" cx="${nd.x.toFixed(1)}" cy="${nd.y.toFixed(1)}" r="${nd.r}" fill="${nd.c}" stroke="${sel ? 'var(--tx)' : 'none'}" stroke-width="3"/>`
+      + (sel ? `<circle cx="${nd.x.toFixed(1)}" cy="${nd.y.toFixed(1)}" r="${nd.r}" fill="none" stroke="var(--tx)" stroke-width="2"><animate attributeName="r" values="${nd.r + 2};${nd.r + 16}" dur="1.2s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0" dur="1.2s" repeatCount="indefinite"/></circle>` : '')
       + `<text x="${nd.x.toFixed(1)}" y="${(nd.y + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="800" fill="#0b0720">${nd.d.total}</text>`
-      + `<text x="${nd.x.toFixed(1)}" y="${(nd.y + nd.r + 14).toFixed(1)}" text-anchor="middle" font-size="10" fill="#e9e5ff">${esc(lab)}</text>`
-      + `<text x="${nd.x.toFixed(1)}" y="${(nd.y + nd.r + 26).toFixed(1)}" text-anchor="middle" font-size="9" fill="#a5b4fc">${nd.d.dss > 0 ? nd.d.dss + ' DT' + (nd.d.dss === 1 ? '' : 's') : ''}</text></g>`;
+      + `<text x="${nd.x.toFixed(1)}" y="${(nd.y + nd.r + 14).toFixed(1)}" text-anchor="middle" font-size="10" fill="var(--tx)">${esc(lab)}</text>`
+      + `<text x="${nd.x.toFixed(1)}" y="${(nd.y + nd.r + 26).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--mu)">${nd.d.dss > 0 ? nd.d.dss + ' DT' + (nd.d.dss === 1 ? '' : 's') : ''}</text></g>`;
   });
   net.innerHTML = h + '</svg>';
   det.innerHTML = nodes.filter(nd => !ccSel || ccSel === nd.f).map(nd => {
@@ -10010,12 +10031,22 @@ function ccTitle() {
   const d = (reportResults && reportResults.formattedDate) || 'Enumeration', on = document.getElementById('dashboardCapture').classList.contains('cc-on');
   return on ? `<span class="cc-sig">🛰️</span>${escapeHtml(d)} · GIS Command Center` : `📊 ${d} GIS Enumeration & Asset Mapping Performance Dashboard`;
 }
+const CC_THEMES = { dark: 1, light: 1, ocean: 1, sunset: 1 };
+let ccTheme = 'dark';
+function ccSetTheme(t) {
+  if (!CC_THEMES[t]) t = 'dark'; ccTheme = t;
+  try { if (!window.CC_EXPORT) localStorage.setItem('eih_cc_theme', t); } catch (e) {}
+  const el = document.getElementById('dashboardCapture'); if (el) el.setAttribute('data-cc-theme', t);
+  if (document.body.classList.contains('cc-mode')) document.body.setAttribute('data-cc-theme', t);
+  const sel = document.getElementById('ccThemeSel'); if (sel) sel.value = t;
+}
 function ccApplyMode(on) {
   const el = document.getElementById('dashboardCapture'); if (!el) return;
   el.classList.toggle('cc-on', on);
   const b = document.getElementById('ccToggleBtn'); if (b) b.innerHTML = on ? '🕰️ Classic view' : '🛰️ Command Center';
   try { localStorage.setItem('eih_cc', on ? '1' : '0'); } catch (e) {}
   document.body.classList.toggle('cc-mode', on); if (on && typeof ccRenderAll === 'function') ccRenderAll();
+  document.body.classList.toggle('cc-mode', on); if (on) ccSetTheme(ccTheme); else document.body.removeAttribute('data-cc-theme');
   const h = document.getElementById('dashboardDateHeader'); if (h && reportResults && reportResults.formattedDate) h.innerHTML = ccTitle();
 }
 (function ccInit() {
@@ -10024,6 +10055,7 @@ function ccApplyMode(on) {
   if (window.CC_EXPORT) { dtLookup = {}; dtDayData = {}; on = !!CC_EXPORT.on; }
   else { try { const o = JSON.parse(localStorage.getItem('eih_dtLookup') || '{}'); if (o && typeof o === 'object') dtLookup = o; } catch (e) {} try { on = localStorage.getItem('eih_cc') !== '0'; } catch (e) {} }
   ccStatus();
+  try { ccTheme = window.CC_EXPORT ? ((document.getElementById('dashboardCapture') || document.body).getAttribute('data-cc-theme') || 'dark') : (localStorage.getItem('eih_cc_theme') || 'dark'); } catch (e) {}
   ccApplyMode(on);
   const _u = updateDashboard;
   updateDashboard = function () { const r = _u.apply(this, arguments); try { if (document.getElementById('dashboardCapture').classList.contains('cc-on')) ccRenderAll(); } catch (e) { console.error(e); } return r; };

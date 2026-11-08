@@ -110,3 +110,11 @@ The tool's own libraries (JSZip, PapaParse) are served from `public/legacy/merge
 - **Layout.** Feeder network and Leaderboard are equal-height; the feeder detail cards sit in their own full-width auto-fit grid below them; Unauthorized mapping and Call-back audit are equal-height.
 - **Interactive export.** The WhatsApp/HTML export embeds the report data and the Command Center script, so node taps, the All/AEDC/BSS/NYSC switch, search and filters work in the exported file too (it needs a browser that runs scripts).
 - **DT names on nodes (revised).** Feeder cards no longer list DTs. A node shows the count of DT assets captured on that feeder (DT/DSS column) and its card has a small **DT names captured (N)** drop button listing only the DTs captured in that report (names from the DT lookup). A snapshot of those captured DT IDs is saved inside the dashboard record (`dashboards/<date>/ccDt`), so re-opened saved dashboards and exports still show them. The lookup's Feeder column is no longer used for display.
+
+## Themes, Feeder Manager default, and date check
+
+- **Command Center themes.** The header has a theme picker (Dark, Light, Ocean, Sunset). It changes the page, the Abuja map lines and all cards. The choice is remembered per device and the WhatsApp/HTML export carries whatever theme is selected when you export.
+- **Feeder Manager > DT Allocation.** The top section is now three labelled steps: 1 Feeder, 2 Show, 3 Find DTs and act, with bigger touch targets and a scrollable filter row for phones.
+  - **📌 Keep this feeder + filter as my default** saves the feeder and filter (for example Assigned (Ongoing)) on this device; the tab opens on it next time. Tap again to clear.
+  - **🔎 Check DTs by date** (`DtCheckDialog.tsx`, logic in `findMissingOnDates`, `lib/field/stale.ts`): pick Today, Latest upload, Last 3 uploads or any dates; it lists ongoing DTs that have no capture in the uploaded enumeration data on those dates (this feeder or all feeders). Search, tick several (or Select all) and **Mark complete**. A DT seen on any checked date stays ongoing; dates with no uploaded data are skipped with a warning so nothing is flagged by mistake.
+- Tests: `src/test/field-date-check.test.tsx`.
