@@ -44,8 +44,8 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
   useEffect(() => {
     const d = readDefault();
     setDef(d);
-    if (d && !appliedDef.current && m.feederById.has(d.feederId)) { appliedDef.current = true; setFeederId(d.feederId); setStatusF(d.statusF); }
-  }, [m.feeders.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (isAdmin && d && !appliedDef.current && m.feederById.has(d.feederId)) { appliedDef.current = true; setFeederId(d.feederId); setStatusF(d.statusF); }
+  }, [m.feeders.length, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
   const isDefault = !!def && def.feederId === feederId && def.statusF === statusF;
   function saveDefault() {
     const d = { feederId, statusF };
@@ -335,12 +335,14 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
             </select>
                 {fq.trim() && <span className="self-center text-xs text-muted-foreground">{feederMatches.length} feeder{feederMatches.length === 1 ? "" : "s"} match</span>}
               </div>
+              {isAdmin && (
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" variant={isDefault ? "default" : "outline"} className="h-11" onClick={isDefault ? clearDefault : saveDefault}>
                   {isDefault ? "📌 Default saved · tap to clear" : "📌 Keep this feeder + filter as my default"}
                 </Button>
                 {def && !isDefault && <span className="text-xs text-muted-foreground">Opens on: {m.feederById.get(def.feederId)?.feeder_name ?? def.feederId}</span>}
               </div>
+              )}
             </div>
             <div className="space-y-2">
               <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">2 · Show</div>
