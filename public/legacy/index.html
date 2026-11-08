@@ -8431,7 +8431,7 @@ function buildWeeklyPerformance(startStr, endStr) {
     });
     const workingDaysReported = reportedDates.filter(perfIsWeekday).length || reportedDates.length;
     const ovAll = wkOverrides();
-    const rows = Object.values(staff).map(s => {
+    const allRowsRaw = Object.values(staff).map(s => {
         const ov = ovAll[s.username] || {};
         const chargeable = s.countedDays || 0;
         const expected = dailyTarget * chargeable;
@@ -8445,7 +8445,9 @@ function buildWeeklyPerformance(startStr, endStr) {
         return { ...s, chargeable, workedDays, expected, pct, avg, notAssessed, met: !notAssessed && s.total >= expected,
             outcomeOv, remarkOv, exempt, monthlyPace: avg * PERF_TARGET.workingDays };
     }).sort((a, b) => b.total - a.total);
-    return { rows, dates: reportedDates, allDates: dates, workingDaysReported, dailyTarget, startStr, endStr };
+    const wkHid = new Set(wkHiddenList(startStr, endStr || startStr));
+    const rows = allRowsRaw.filter(r => !wkHid.has(r.username)), hiddenRows = allRowsRaw.filter(r => wkHid.has(r.username));
+    return { rows, hiddenRows, dates: reportedDates, allDates: dates, workingDaysReported, dailyTarget, startStr, endStr };
 }
 
 function runWeeklyReport() {
@@ -8472,7 +8474,7 @@ function runWeeklyReport() {
         kpi('Total captures', totalCaps, `avg ${data.rows.length ? Math.round(totalCaps / data.rows.length) : 0} per staff`, '#0891b2');
 
     if (!data.rows.length) {
-        document.getElementById('wkTableWrap').innerHTML = `<div style="padding:20px;text-align:center;color:#991b1b;background:#fee2e2;border-radius:8px;font-size:0.8rem;">No saved dashboards found for ${startStr} → ${endStr}. Save the daily dashboards for that week first.</div>`;
+        document.getElementById('wkTableWrap').innerHTML = wkHiddenStrip(data) + `<div style="padding:20px;text-align:center;color:#991b1b;background:#fee2e2;border-radius:8px;font-size:0.8rem;">No saved dashboards found for ${startStr} → ${endStr}. Save the daily dashboards for that week first.</div>`;
         return;
     }
     const dayCols = data.dates.map(dk => `<th style="border:1px solid #cbd5e1;padding:5px 6px;text-align:center;font-size:9px;">${new Date(dk + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}<br>${dk.substring(5)}</th>`).join('');
@@ -8491,7 +8493,7 @@ function runWeeklyReport() {
         }).join('');
         return `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'};">
             <td style="border:1px solid #e2e8f0;padding:4px 6px;text-align:center;">${i + 1}</td>
-            <td style="border:1px solid #e2e8f0;padding:4px 6px;font-weight:600;">${escapeHtml(r.fullname)}</td>
+            <td style="border:1px solid #e2e8f0;padding:4px 6px;font-weight:600;">${escapeHtml(r.fullname)}${wkEditUnlocked ? ` <button type="button" class="no-print" data-u="${escapeHtml(r.username)}" onclick="hideWeeklyStaff(this.dataset.u)" title="Remove ${escapeHtml(r.fullname)} from this weekly report" style="margin-left:4px;border:1px solid #fca5a5;background:#fee2e2;color:#b91c1c;border-radius:4px;font-size:10px;font-weight:700;padding:0 5px;cursor:pointer;">✕</button>` : ''}</td>
             <td style="border:1px solid #e2e8f0;padding:4px 6px;text-align:center;font-size:9px;">${r.group}</td>
             ${dayCells}
             <td style="border:1px solid #e2e8f0;padding:4px 6px;text-align:center;font-weight:700;">${r.total}</td>
@@ -8505,7 +8507,7 @@ function runWeeklyReport() {
             <td style="border:1px solid #e2e8f0;padding:4px 6px;min-width:170px;">${wkRemarkCell(r)}</td>
         </tr>`;
     }).join('');
-    document.getElementById('wkTableWrap').innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:11px;">
+    document.getElementById('wkTableWrap').innerHTML = wkHiddenStrip(data) + `<table style="width:100%;border-collapse:collapse;font-size:11px;">
         <thead><tr style="background:#e0e7ff;">
             <th style="border:1px solid #cbd5e1;padding:5px 6px;">S/N</th>
             <th style="border:1px solid #cbd5e1;padding:5px 6px;text-align:left;">Staff</th>
@@ -8527,6 +8529,32 @@ function runWeeklyReport() {
 let wkEditUnlocked = false;
 const WK_OUTCOME_PRESETS = ['MET', 'NOT MET', 'SPECIAL ASSIGNMENT', 'ON SUPERVISION', 'OFFICE DUTY', 'ON TRAINING', 'RPU EXERCISE', 'EXCUSED', 'NOT ASSESSED'];
 
+/* ---------- Remove / restore names for one weekly report (kept per week on this device; also left out of every export) ---------- */
+function wkHiddenKey(a, b) { return `wkHidden_${a}_${b}`; }
+function wkRangeNow() { const a = (document.getElementById('wkStart') || {}).value || ''; const b = (document.getElementById('wkEnd') || {}).value || a; return [a, b]; }
+function wkHiddenList(a, b) { try { const l = JSON.parse(localStorage.getItem(wkHiddenKey(a, b)) || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
+function wkSaveHidden(list) { const [a, b] = wkRangeNow(); try { localStorage.setItem(wkHiddenKey(a, b), JSON.stringify(list)); } catch (e) {} }
+function hideWeeklyStaff(username) {
+    if (!wkEditUnlocked) { showStatus('Unlock editing with admin access first', 'error'); return; }
+    const [a, b] = wkRangeNow(), l = wkHiddenList(a, b);
+    if (!l.includes(username)) l.push(username);
+    wkSaveHidden(l); runWeeklyReport();
+    showStatus('Removed from this weekly report (use Show again to restore)', 'success');
+}
+function showWeeklyStaff(username) {
+    if (!wkEditUnlocked) { showStatus('Unlock editing with admin access first', 'error'); return; }
+    const [a, b] = wkRangeNow(); wkSaveHidden(wkHiddenList(a, b).filter(u => u !== username)); runWeeklyReport();
+}
+function showAllWeeklyStaff() {
+    if (!wkEditUnlocked) { showStatus('Unlock editing with admin access first', 'error'); return; }
+    wkSaveHidden([]); runWeeklyReport();
+}
+function wkHiddenStrip(data) {
+    const h = (data && data.hiddenRows) || [];
+    if (!h.length) return '';
+    const chip = r => `<span style="display:inline-block;background:#fff;border:1px solid #fdba74;border-radius:99px;padding:1px 8px;margin:2px 4px 2px 0;">${escapeHtml(r.fullname)}${wkEditUnlocked ? ` <button type="button" data-u="${escapeHtml(r.username)}" onclick="showWeeklyStaff(this.dataset.u)" style="border:0;background:none;color:#c2410c;font-weight:700;cursor:pointer;">show again</button>` : ''}</span>`;
+    return `<div class="no-print" style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:0.75rem;color:#9a3412;">🙈 <b>${h.length}</b> name${h.length === 1 ? '' : 's'} removed from this report (also left out of the exports): ${h.map(chip).join('')} ${wkEditUnlocked ? '<button type="button" onclick="showAllWeeklyStaff()" style="border:1px solid #fdba74;background:#fff;border-radius:6px;padding:1px 8px;font-weight:700;cursor:pointer;">Show all</button>' : '<i>Unlock editing to restore.</i>'}</div>`;
+}
 function wkOverrideKey() {
     const a = (document.getElementById('wkStart') || {}).value || '';
     const b = (document.getElementById('wkEnd') || {}).value || '';
@@ -9708,19 +9736,25 @@ body.cc-mode{background-color:#08051a!important;background-image:radial-gradient
 #ccRoot .cc-card summary{padding:3px 10px;font-size:.7rem}#ccRoot .cc-card details.cc-more{margin-top:4px}
 #dashboardCapture:not(.cc-on) #ccThemeSel{display:none}
 #dashboardCapture.cc-on[data-cc-theme="light"]{--bg:#eef2fb;--p:#ffffff;--p2:#eef1fb;--tx:#1e1b4b;--mu:#5b6490;--ln:#d3daf0;--ac:#0891b2;--ok:#059669;--wa:#b45309;--er:#dc2626;--cc-card:#ffffff;--cc-cardln:#d3daf0;--cc-cardtx:#1e1b4b;--cc-sub:#4b5280;--cc-shadow:#9aa3d0}
-#dashboardCapture.cc-on[data-cc-theme="ocean"]{--bg:#0b3a5b;--p:#12527f;--p2:#1b6a9e;--tx:#f0f9ff;--mu:#bae6fd;--ln:#3b8bbf;--ac:#67e8f9;--cc-card:#0f4a75;--cc-cardln:#4aa0d6;--cc-cardtx:#f0f9ff;--cc-sub:#d3effc;--cc-shadow:#001a2e}
-#dashboardCapture.cc-on[data-cc-theme="sunset"]{--bg:#4a1d3d;--p:#6a2a52;--p2:#853a66;--tx:#fff7ed;--mu:#fdba74;--ln:#b4567f;--ac:#fbbf24;--cc-card:#5c2548;--cc-cardln:#c4648c;--cc-cardtx:#fff7ed;--cc-sub:#fde2c8;--cc-shadow:#200a18}
+#dashboardCapture.cc-on[data-cc-theme="ocean"]{--bg:#1d6fa3;--p:#17598a;--p2:#2a7db5;--tx:#f0f9ff;--mu:#d0efff;--ln:#5aa6d8;--ac:#8bf0ff;--cc-card:#145184;--cc-cardln:#5aa6d8;--cc-cardtx:#f0f9ff;--cc-sub:#dbf1ff;--cc-shadow:#052338}
+#dashboardCapture.cc-on[data-cc-theme="sunset"]{--bg:#9a4571;--p:#7a2f5b;--p2:#964072;--tx:#fff7ed;--mu:#ffd8a8;--ln:#cf7aa3;--ac:#ffd166;--cc-card:#722a55;--cc-cardln:#d98aae;--cc-cardtx:#fff7ed;--cc-sub:#ffe6cf;--cc-shadow:#2a0c1e}
 #dashboardCapture.cc-on[data-cc-theme="light"] .gis-hero{background:linear-gradient(135deg,#6366f1 0%,#ec4899 55%,#f59e0b 100%);box-shadow:0 14px 34px -16px #6366f1}
 #dashboardCapture.cc-on[data-cc-theme="ocean"] .gis-hero{background:linear-gradient(135deg,#0ea5e9,#6366f1 60%,#0f766e);box-shadow:0 14px 34px -16px #0ea5e9}
 #dashboardCapture.cc-on[data-cc-theme="sunset"] .gis-hero{background:linear-gradient(135deg,#f97316,#db2777 55%,#7c3aed);box-shadow:0 14px 34px -16px #db2777}
 body.cc-mode[data-cc-theme="light"]{background-color:#eef2fb!important;background-image:radial-gradient(60% 50% at 8% 0%,#a5b4fc77,transparent),radial-gradient(50% 45% at 98% 8%,#f9a8d477,transparent),radial-gradient(60% 50% at 85% 100%,#67e8f977,transparent),radial-gradient(40% 40% at 0% 92%,#fde68a88,transparent),linear-gradient(#1e1b4b0d 1px,transparent 1px),linear-gradient(90deg,#1e1b4b0d 1px,transparent 1px)!important}
-body.cc-mode[data-cc-theme="ocean"]{background-color:#0b3a5b!important;background-image:radial-gradient(60% 50% at 8% 0%,#22d3ee55,transparent),radial-gradient(50% 45% at 98% 8%,#6366f166,transparent),radial-gradient(60% 50% at 85% 100%,#38bdf855,transparent),radial-gradient(40% 40% at 0% 92%,#34d39944,transparent),linear-gradient(#ffffff10 1px,transparent 1px),linear-gradient(90deg,#ffffff10 1px,transparent 1px)!important}
-body.cc-mode[data-cc-theme="sunset"]{background-color:#4a1d3d!important;background-image:radial-gradient(60% 50% at 8% 0%,#f59e0b55,transparent),radial-gradient(50% 45% at 98% 8%,#ec489966,transparent),radial-gradient(60% 50% at 85% 100%,#7c3aed55,transparent),radial-gradient(40% 40% at 0% 92%,#fb923c44,transparent),linear-gradient(#ffffff10 1px,transparent 1px),linear-gradient(90deg,#ffffff10 1px,transparent 1px)!important}
+body.cc-mode[data-cc-theme="ocean"]{background-color:#1d6fa3!important;background-image:radial-gradient(60% 50% at 8% 0%,#38bdf888,transparent),radial-gradient(50% 45% at 98% 8%,#818cf888,transparent),radial-gradient(60% 50% at 85% 100%,#22d3ee77,transparent),radial-gradient(40% 40% at 0% 92%,#6ee7b755,transparent),linear-gradient(#ffffff14 1px,transparent 1px),linear-gradient(90deg,#ffffff14 1px,transparent 1px)!important}
+body.cc-mode[data-cc-theme="sunset"]{background-color:#9a4571!important;background-image:radial-gradient(60% 50% at 8% 0%,#fbbf2477,transparent),radial-gradient(50% 45% at 98% 8%,#f472b688,transparent),radial-gradient(60% 50% at 85% 100%,#c084fc66,transparent),radial-gradient(40% 40% at 0% 92%,#fb923c66,transparent),linear-gradient(#ffffff14 1px,transparent 1px),linear-gradient(90deg,#ffffff14 1px,transparent 1px)!important}
 #dashboardCapture[data-cc-theme="light"] #ccBg .ccbgsvg{opacity:1}
 #dashboardCapture[data-cc-theme="light"] #ccBg .rd{stroke:#6d28d9;stroke-opacity:.3}#dashboardCapture[data-cc-theme="light"] #ccBg .rd.m{stroke:#be185d;stroke-opacity:.38}#dashboardCapture[data-cc-theme="light"] #ccBg .th{stroke:#0891b2;stroke-opacity:.3}
 #dashboardCapture[data-cc-theme="light"] #ccBg .wt{fill:#06b6d4;fill-opacity:.2;stroke:#0891b2;stroke-opacity:.5}#dashboardCapture[data-cc-theme="light"] #ccBg .hl{fill:#f59e0b;fill-opacity:.2;stroke:#d97706;stroke-opacity:.5}
 #dashboardCapture[data-cc-theme="light"] #ccBg text{fill:#4338ca;fill-opacity:.75}
-#dashboardCapture[data-cc-theme="ocean"] #ccBg text{fill:#bae6fd;fill-opacity:.8}#dashboardCapture[data-cc-theme="sunset"] #ccBg text{fill:#fed7aa;fill-opacity:.8}
+#dashboardCapture:not([data-cc-theme="light"]) #ccBg .ccbgsvg{opacity:1}
+#dashboardCapture:not([data-cc-theme="light"]) #ccBg .rd{stroke:#e2d9ff;stroke-opacity:.6;stroke-width:2.4}
+#dashboardCapture:not([data-cc-theme="light"]) #ccBg .rd.m{stroke:#ffc2e2;stroke-opacity:.75;stroke-width:4}
+#dashboardCapture:not([data-cc-theme="light"]) #ccBg .th{stroke:#a5f3fc;stroke-opacity:.5}
+#dashboardCapture:not([data-cc-theme="light"]) #ccBg .wt{fill:#67e8f9;fill-opacity:.3;stroke:#a5f3fc;stroke-opacity:.8}
+#dashboardCapture:not([data-cc-theme="light"]) #ccBg .hl{fill:#fde68a;fill-opacity:.28;stroke:#fde68a;stroke-opacity:.85}
+#dashboardCapture:not([data-cc-theme="light"]) #ccBg text{fill:#f5f1ff;fill-opacity:.92}
 #dashboardCapture[data-cc-theme="light"] #ccRoot .bd.ok{background:#10b98122;color:#047857}#dashboardCapture[data-cc-theme="light"] #ccRoot .bd.no{background:#f59e0b2a;color:#92400e}#dashboardCapture[data-cc-theme="light"] #ccRoot .bd.ab{background:#ef44441f;color:#b91c1c}#dashboardCapture[data-cc-theme="light"] #ccRoot .bd.su{background:#6366f11f;color:#3730a3}
 #dashboardCapture[data-cc-theme="light"] #ccRoot .row:hover,#dashboardCapture[data-cc-theme="light"] #ccRoot tr:hover td{background:#1e1b4b0d}
 #dashboardCapture[data-cc-theme="light"] #ccRoot .kpi b{text-shadow:none}

@@ -118,3 +118,8 @@ The tool's own libraries (JSZip, PapaParse) are served from `public/legacy/merge
   - **📌 Keep this feeder + filter as my default** saves the feeder and filter (for example Assigned (Ongoing)) on this device; the tab opens on it next time. Tap again to clear.
   - **🔎 Check DTs by date** (`DtCheckDialog.tsx`, logic in `findMissingOnDates`, `lib/field/stale.ts`): pick Today, Latest upload, Last 3 uploads or any dates; it lists ongoing DTs that have no capture in the uploaded enumeration data on those dates (this feeder or all feeders). Search, tick several (or Select all) and **Mark complete**. A DT seen on any checked date stays ongoing; dates with no uploaded data are skipped with a warning so nothing is flagged by mistake.
 - Tests: `src/test/field-date-check.test.tsx`.
+
+## Lighter map on dark themes, and removing names from the weekly report
+
+- **Map visibility.** In Dark, Ocean and Sunset the Abuja map lines and labels are now light and clearly visible; Ocean and Sunset backgrounds are also lighter (mid-tone, not dark). Light theme is unchanged.
+- **Weekly report: remove names.** After **Unlock Editing**, each staff row has a red ✕. It removes that person from this week's report (table, KPIs, Excel, HTML export and the WhatsApp summary). A strip above the table lists removed names with **show again** and **Show all**. The list is saved per week on this device (`wkHidden_<start>_<end>` in localStorage) and does not delete any data.
