@@ -5492,7 +5492,7 @@
 
             remarksData = reportResults.remarksData || {};
             feederOverrides = reportResults.feederOverrides ? {...reportResults.feederOverrides} : {};
-            if (reportResults.feederCompletionStatus) feederCompletionStatus = {...reportResults.feederCompletionStatus};
+            if (reportResults.feederCompletionStatus) { const keepDone = {}; Object.entries(feederCompletionStatus).forEach(([f, st]) => { if (/^complet/i.test(String(st || '').trim())) keepDone[f] = st; }); feederCompletionStatus = { ...reportResults.feederCompletionStatus, ...keepDone }; /* a feeder already marked Completed stays Completed: opening an older saved dashboard never reopens it */ }
             // Restore unauthorized mapping data
             unauthSavedViolations = toArray(reportResults.unauthViolations || []);
             unauthDismissed = toArray(reportResults.unauthDismissed || []);

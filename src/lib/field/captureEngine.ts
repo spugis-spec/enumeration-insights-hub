@@ -97,6 +97,13 @@ export function readRow(r: CaptureRow): Fields {
   };
 }
 
+/** The raw date/time cell of every row (used to ask which order, day first or month first, the dates are in). */
+export function captureTimeValues(inputs: CaptureInput[]): string[] {
+  const out: string[] = [];
+  for (const inp of inputs) for (const r of inp.rows) { const t = pickTime(r); if (t) out.push(String(t)); }
+  return out;
+}
+
 /** Feeders present in the rows, and whether each is in the uploaded lookup (used to build the "which feeders?" choice). */
 const SCI = /^\d+(\.\d+)?e\+?\d+$/i;
 /** Why a scan cannot be used (no rows, no DT IDs, DT IDs ruined by scientific notation, no lookup), or null when it is fine. */

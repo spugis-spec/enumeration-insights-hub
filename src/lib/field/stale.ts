@@ -120,6 +120,8 @@ export type MissingResult = {
  */
 export function findMissingOnDates(opts: {
   m: Model; days: string[]; feeders?: string[] | null; extra?: { dt_id: string | null; day: string | null }[];
+  /** Also list unassigned DTs that were captured before (default true). Completed DTs are never listed: a completed DT stays completed. */
+  includeUnassigned?: boolean;
 }): MissingResult {
   const { m } = opts;
   const focus = opts.feeders?.length ? new Set(opts.feeders) : null;
@@ -150,10 +152,13 @@ export function findMissingOnDates(opts: {
   let checked = 0;
   let found = 0;
   for (const d of m.dts) {
-    if (d.status !== "assigned" || !inFocus(d.dt_id)) continue;
+    if (!inFocus(d.dt_id)) continue;
+    const ongoing = d.status === "assigned";
+    const idle = d.status === "unassigned" && opts.includeUnassigned !== false && (byDt.get(d.dt_id)?.size ?? 0) > 0; // worked before, nobody holds it now
+    if (!ongoing && !idle) continue; // completed (and anything else) is left alone
     // ongoing, properly assigned work: not waiting for authorization, and already assigned by the last checked date
-    const live = (m.allocsByDt.get(d.dt_id) ?? []).filter((a) => a.status === "active" && !(a.self_assigned && a.authorized !== true));
-    if (!live.length) continue;
+    const live = ongoing ? (m.allocsByDt.get(d.dt_id) ?? []).filter((a) => a.status === "active" && !(a.self_assigned && a.authorized !== true)) : [];
+    if (ongoing && !live.length) continue;
     const allocatedOn = live.map((a) => a.allocated_on).filter(Boolean).sort()[0] ?? null;
     if (allocatedOn && allocatedOn > lastUsed) continue;
     checked++;

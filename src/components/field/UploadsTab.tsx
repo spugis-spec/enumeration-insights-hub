@@ -5,10 +5,11 @@ import { CheckCircle2, Download, History, Loader2, Save, Trash2, X, XCircle } fr
 import { addMany, patchMany, removeMany, updateRow, upsertMany, safeId } from "@/lib/field/db";
 import { auth } from "@/lib/field/firebase";
 import { useRefresh, type Model } from "@/lib/field/data";
-import { scanFeeders, validateCaptureScan, type Analysis, type CaptureInput } from "@/lib/field/captureEngine";
+import { captureTimeValues, scanFeeders, validateCaptureScan, type Analysis, type CaptureInput } from "@/lib/field/captureEngine";
 import { applyCaptureCheck, checkSummary, type CheckChoice } from "@/lib/field/captureRun";
 import { CaptureReportDialog, CaptureScopeDialog } from "./CaptureDialogs";
-import { parseCaptureTime } from "@/lib/field/dates";
+import { detectDateOrder, parseCaptureTime, setDateOrder, type DateOrder, type DateOrderInfo } from "@/lib/field/dates";
+import { DateOrderDialog } from "./DateOrderDialog";
 import { fetchDashboardCaptureRows } from "@/lib/field/dashboardSync";
 import {
   UPLOADED_COLLECTIONS,
@@ -347,7 +348,29 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
   const [checkReport, setCheckReport] = useState<{ a: Analysis; label: string; feeders: string[]; from: string | null; to: string | null } | null>(null);
 
   /** First look at the rows: sanity checks, then ask which feeders and dates to work on. */
+  const [dateReq, setDateReq] = useState<{ inputs: CaptureInput[]; info: DateOrderInfo } | null>(null);
+  const lastOrder = (): DateOrder => {
+    try { const v = window.localStorage.getItem("eih_field_date_order"); return v === "dmy" || v === "mdy" ? v : "auto"; } catch { return "auto"; }
+  };
+
+  /** Before anything else: if the dates can be read two ways (11/04/2026 = 11 April or 4 November), ask which. */
   function startCheck(inputs: CaptureInput[]) {
+    const info = detectDateOrder(captureTimeValues(inputs));
+    if (info.needsChoice) return void setDateReq({ inputs, info });
+    setDateOrder(info.evidence ?? "auto"); // the file itself proves the order, or nothing is ambiguous
+    continueCheck(inputs);
+  }
+  function pickOrder(o: "dmy" | "mdy") {
+    const req = dateReq;
+    setDateReq(null);
+    if (!req) return;
+    setDateOrder(o);
+    try { window.localStorage.setItem("eih_field_date_order", o); } catch { /* not saved */ }
+    toast.message(o === "dmy" ? "Dates read day first (DD/MM/YYYY)" : "Dates read month first (MM/DD/YYYY)");
+    continueCheck(req.inputs);
+  }
+
+  function continueCheck(inputs: CaptureInput[]) {
     const scan = scanFeeders(inputs, m);
     const bad = validateCaptureScan(scan, m);
     if (bad) return void toast.error(bad);
@@ -1049,6 +1072,7 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
         </Section>
       </div>
       <ConfirmDialog req={confirmReq} onClose={() => setConfirmReq(null)} />
+      {dateReq && <DateOrderDialog info={dateReq.info} suggested={lastOrder()} onPick={pickOrder} onCancel={() => setDateReq(null)} />}
       {scopeReq && (
         <CaptureScopeDialog
           req={scopeReq} m={m} hasData={hasData} legacyCount={m.submissions.filter((x) => x.day == null).length}

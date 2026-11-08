@@ -35,10 +35,12 @@ export async function applyCaptureCheck(opts: { m: Model; inputs: CaptureInput[]
   // Self-assign: a DT nobody was assigned on the app, but a staff member captured on it.
   const uid = auth().currentUser?.uid ?? null;
   const today = new Date().toISOString().slice(0, 10);
-  if (a.selfAssign.length)
+  // A DT marked complete stays complete: uploaded captures never self-assign it or reopen it. Only a manual change does.
+  const selfList = a.selfAssign.filter((s) => m.dtById.get(s.dt.dt_id)?.status !== "completed");
+  if (selfList.length)
     await addMany(
       "allocations",
-      a.selfAssign.map((s) => ({
+      selfList.map((s) => ({
         dt_id: s.dt.dt_id, enumerator_id: s.enumerator.id, allocated_on: (s.first ?? today).slice(0, 10), due_date: null,
         notes: "Self-assigned: captured on this DT before it was assigned on the app. Awaiting authorization.",
         allocated_by: uid, status: "active", completed_on: null, self_assigned: true, authorized: false, last_worked_on: (s.last ?? today).slice(0, 10),
@@ -54,14 +56,14 @@ export async function applyCaptureCheck(opts: { m: Model; inputs: CaptureInput[]
   if (worked.length) await patchMany("allocations", worked.map((w) => ({ id: w.allocId, patch: { last_worked_on: w.last } })));
 
   // Remember every username on every DT it was captured on, and move self-assigned DTs to "assigned".
-  const selfDts = new Set(a.selfAssign.map((s) => s.dt.dt_id));
+  const selfDts = new Set(selfList.map((s) => s.dt.dt_id));
   const patches: { id: string; patch: Record<string, any> }[] = [];
   for (const [dtId, found] of a.workers) {
     const dt = m.dtById.get(dtId);
     if (!dt) continue;
     const merged = mergeWorkers(dt.workers, found);
     const changed = JSON.stringify(merged) !== JSON.stringify(dt.workers ?? []);
-    const assign = selfDts.has(dtId) && dt.status === "unassigned";
+    const assign = selfDts.has(dtId) && dt.status === "unassigned"; // selfList already leaves out completed DTs
     if (!changed && !assign) continue;
     patches.push({ id: dt.id, patch: { workers: merged, ...(assign ? { status: "assigned", status_note: null, updated_at: new Date().toISOString() } : {}) } });
   }
