@@ -18,13 +18,14 @@ export function DtCheckDialog({ m, feederId, open, onOpenChange, onComplete, bus
   const [days, setDays] = useState<string[]>([today]);
   const [scope, setScope] = useState<"feeder" | "all">(feederId ? "feeder" : "all");
   const [q, setQ] = useState("");
+  const [withIdle, setWithIdle] = useState(true);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const feeder = m.feederById.get(feederId);
   const uploaded = useMemo(() => recentCaptureDates(m, 14, today), [m, today]);
   const chips = useMemo(() => [...new Set([today, ...uploaded, ...days])].sort().reverse().slice(0, 16), [today, uploaded, days]);
   const res = useMemo(
-    () => findMissingOnDates({ m, days, feeders: scope === "feeder" && feederId ? [feederId] : null }),
-    [m, days, scope, feederId],
+    () => findMissingOnDates({ m, days, feeders: scope === "feeder" && feederId ? [feederId] : null, includeUnassigned: withIdle }),
+    [m, days, scope, feederId, withIdle],
   );
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -79,6 +80,10 @@ export function DtCheckDialog({ m, feederId, open, onOpenChange, onComplete, bus
             </button>
             <button type="button" className={"min-h-10 px-3 " + (scope === "all" ? "bg-foreground text-background" : "hover:bg-muted")} onClick={() => setScope("all")}>All feeders</button>
           </div>
+          <label className="flex items-start gap-2 pt-1 text-sm">
+            <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0" checked={withIdle} onChange={(e) => setWithIdle(e.target.checked)} />
+            <span>Also include <b>unassigned</b> DTs that were captured before (completed DTs are never listed and stay completed)</span>
+          </label>
         </div>
 
         {res.skipped.length > 0 && (
@@ -88,7 +93,7 @@ export function DtCheckDialog({ m, feederId, open, onOpenChange, onComplete, bus
         )}
         {res.days.length > 0 && (
           <p className="text-sm">
-            Checked <b>{res.days.map(short).join(", ")}</b>: <b>{res.missing.length}</b> of {res.checked} ongoing DT{res.checked === 1 ? "" : "s"} not found in the uploaded data
+            Checked <b>{res.days.map(short).join(", ")}</b>: <b>{res.missing.length}</b> of {res.checked} DT{res.checked === 1 ? "" : "s"} (ongoing{withIdle ? " and unassigned" : ""}) not found in the uploaded data
             {res.found ? `, ${res.found} found (still being worked)` : ""}.
           </p>
         )}
@@ -106,9 +111,9 @@ export function DtCheckDialog({ m, feederId, open, onOpenChange, onComplete, bus
                 <label key={x.dt.dt_id} className={"flex cursor-pointer items-start gap-3 rounded-lg border p-3 " + (picked.has(x.dt.dt_id) ? "border-success bg-success/10" : "bg-card")}>
                   <input type="checkbox" className="mt-1 h-5 w-5 shrink-0" checked={picked.has(x.dt.dt_id)} onChange={() => toggle(x.dt.dt_id)} />
                   <div className="min-w-0 flex-1">
-                    <div className="font-extrabold">{x.dt.dt_name || "(no name)"}</div>
+                    <div className="font-extrabold">{x.dt.dt_name || "(no name)"} <span className={"ml-1 rounded-full border px-2 py-0.5 align-middle text-[10px] font-bold " + (x.dt.status === "unassigned" ? "border-muted-foreground text-muted-foreground" : "border-success text-success")}>{x.dt.status === "unassigned" ? "Unassigned" : "Ongoing"}</span></div>
                     <div className="text-xs text-muted-foreground">{x.dt.dt_id} · {x.feeder_id}</div>
-                    <div className="text-xs">Assigned to: {x.holders.join(", ") || "—"}</div>
+                    <div className="text-xs">{x.dt.status === "unassigned" ? "Nobody holds it now" : `Assigned to: ${x.holders.join(", ") || "—"}`}</div>
                     <div className={"text-xs font-semibold " + (x.lastCapture ? "" : "text-destructive")}>{x.lastCapture ? `Last captured ${short(x.lastCapture)}` : "Never captured"}</div>
                   </div>
                 </label>
@@ -124,7 +129,7 @@ export function DtCheckDialog({ m, feederId, open, onOpenChange, onComplete, bus
           </>
         )}
         {res.days.length > 0 && !res.missing.length && (
-          <p className="rounded border bg-muted/50 p-3 text-sm">Every ongoing DT in scope appears in the uploaded data for the checked date(s), so none needs completing.</p>
+          <p className="rounded border bg-muted/50 p-3 text-sm">Every DT in scope appears in the uploaded data for the checked date(s), so none needs completing.</p>
         )}
       </DialogContent>
     </Dialog>

@@ -123,3 +123,10 @@ The tool's own libraries (JSZip, PapaParse) are served from `public/legacy/merge
 
 - **Map visibility.** In Dark, Ocean and Sunset the Abuja map lines and labels are now light and clearly visible; Ocean and Sunset backgrounds are also lighter (mid-tone, not dark). Light theme is unchanged.
 - **Weekly report: remove names.** After **Unlock Editing**, each staff row has a red ✕. It removes that person from this week's report (table, KPIs, Excel, HTML export and the WhatsApp summary). A strip above the table lists removed names with **show again** and **Show all**. The list is saved per week on this device (`wkHidden_<start>_<end>` in localStorage) and does not delete any data.
+
+## Completed stays completed, DT date check, and date order
+
+- **Completed DTs stay completed.** An upload never self-assigns, reopens or re-assigns a DT whose status is Completed (`captureRun.ts` leaves them out, and the engine already treated them as not-allocated). Only a manual change reopens one. In the legacy Dashboard, opening an older saved dashboard no longer overwrites a feeder that is already marked Completed.
+- **Check DTs by date** now covers ongoing DTs and unassigned DTs that were captured before (a tick box turns the unassigned ones off). DTs with no capture on the chosen date(s) can be ticked and marked complete; completed DTs are never listed.
+- **Date order pop-up (Data Uploads > captures).** When the dates can be read two ways (for example `11/04/2026` is 11 April or 4 November) and the file does not prove which, a pop-up asks: Day first or Month first, showing the date range each choice gives and how many would be in the future. The choice applies to that upload and is remembered as the pre-selected option next time. Files with an obvious row (`25/11/2026`) or ISO dates do not ask.
+- Tests: `src/test/field-date-order.test.ts`, `src/test/field-date-check.test.tsx`.

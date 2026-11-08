@@ -71,6 +71,15 @@ describe("check ongoing DTs against chosen dates", () => {
     expect(r.missing.find((x) => x.dt.dt_id === "C")!.lastCapture).toBeNull();
   });
 
+  it("also lists unassigned DTs that were captured before, but never completed ones", () => {
+    const withIdle = [...subs, sub("D", "2026-10-04"), sub("F", "2026-10-04")]; // D is unassigned, F is completed
+    const r = findMissingOnDates({ m: build(withIdle), days: ["2026-10-13"] });
+    expect(r.missing.map((x) => x.dt.dt_id)).toEqual(["A", "B", "C", "D", "H"]);
+    expect(r.missing.map((x) => x.dt.dt_id)).not.toContain("F"); // completed stays completed
+    const off = findMissingOnDates({ m: build(withIdle), days: ["2026-10-13"], includeUnassigned: false });
+    expect(off.missing.map((x) => x.dt.dt_id)).not.toContain("D");
+  });
+
   it("lists upload dates newest first and never future dates", () => {
     expect(recentCaptureDates(build([...subs, sub("G", "2099-01-01")]), 14, "2026-10-13")).toEqual(["2026-10-13", "2026-10-12", "2026-10-11", "2026-10-05"]);
   });
