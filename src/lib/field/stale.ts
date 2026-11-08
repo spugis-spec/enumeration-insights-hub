@@ -19,7 +19,7 @@ export type StaleResult = {
   stale: StaleDt[];
 };
 
-const localToday = () => {
+export const localToday = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
@@ -89,4 +89,83 @@ export function findStaleDts(opts: {
   }
   stale.sort((a, b) => (a.lastCapture ?? "").localeCompare(b.lastCapture ?? "") || (a.dt.dt_name ?? a.dt.dt_id).localeCompare(b.dt.dt_name ?? b.dt.dt_id));
   return { ...base, days: [...recent].reverse(), enough: true, note: null, stale };
+}
+
+/** Distinct capture dates present in the saved/uploaded data, newest first (never later than today). */
+export function recentCaptureDates(m: Model, limit = 14, today: string = localToday()): string[] {
+  const all = new Set<string>();
+  for (const s of m.submissions) {
+    const d = s.day ?? s.captured_at?.slice(0, 10) ?? null;
+    if (d && d <= today) all.add(d);
+  }
+  return [...all].sort().reverse().slice(0, limit);
+}
+
+export type MissingResult = {
+  /** Selected dates that have uploaded captures, oldest first (these are the dates actually checked). */
+  days: string[];
+  /** Selected dates with NO uploaded captures at all: skipped, because every DT would look missing. */
+  skipped: string[];
+  /** Ongoing DTs examined. */
+  checked: number;
+  /** Ongoing DTs that DO appear in the uploaded data on at least one checked date. */
+  found: number;
+  /** Ongoing DTs with no capture on any checked date: candidates to mark complete. */
+  missing: StaleDt[];
+};
+
+/**
+ * Ongoing DTs that do not appear in the uploaded enumeration data on the chosen dates (for example just today).
+ * A DT that appears on any one of the checked dates counts as still being worked. Dates with no uploaded data at all are skipped.
+ */
+export function findMissingOnDates(opts: {
+  m: Model; days: string[]; feeders?: string[] | null; extra?: { dt_id: string | null; day: string | null }[];
+}): MissingResult {
+  const { m } = opts;
+  const focus = opts.feeders?.length ? new Set(opts.feeders) : null;
+  const inFocus = (dtId: string) => {
+    const d = m.dtById.get(dtId);
+    return !!d && (!focus || focus.has(d.feeder_id));
+  };
+  const byDt = new Map<string, Set<string>>();
+  const anyData = new Set<string>();
+  const note = (dtId: string | null, day: string | null) => {
+    if (!day) return;
+    anyData.add(day);
+    if (!dtId || !inFocus(dtId)) return;
+    const set = byDt.get(dtId) ?? new Set<string>();
+    set.add(day);
+    byDt.set(dtId, set);
+  };
+  for (const s of m.submissions) note(s.dt_id, s.day ?? s.captured_at?.slice(0, 10) ?? null);
+  for (const e of opts.extra ?? []) note(e.dt_id, e.day);
+
+  const picked = [...new Set(opts.days)].sort();
+  const used = picked.filter((d) => anyData.has(d));
+  const skipped = picked.filter((d) => !anyData.has(d));
+  if (!used.length) return { days: [], skipped, checked: 0, found: 0, missing: [] };
+  const lastUsed = used[used.length - 1]!;
+
+  const missing: StaleDt[] = [];
+  let checked = 0;
+  let found = 0;
+  for (const d of m.dts) {
+    if (d.status !== "assigned" || !inFocus(d.dt_id)) continue;
+    // ongoing, properly assigned work: not waiting for authorization, and already assigned by the last checked date
+    const live = (m.allocsByDt.get(d.dt_id) ?? []).filter((a) => a.status === "active" && !(a.self_assigned && a.authorized !== true));
+    if (!live.length) continue;
+    const allocatedOn = live.map((a) => a.allocated_on).filter(Boolean).sort()[0] ?? null;
+    if (allocatedOn && allocatedOn > lastUsed) continue;
+    checked++;
+    const days = byDt.get(d.dt_id) ?? new Set<string>();
+    if (used.some((u) => days.has(u))) { found++; continue; }
+    const seen = [...days].sort();
+    missing.push({
+      dt: d, feeder_id: d.feeder_id,
+      holders: live.map((a) => m.enumById.get(a.enumerator_id)).filter((e): e is NonNullable<typeof e> => !!e).map((e) => e.full_name || e.username),
+      allocatedOn, lastCapture: seen[seen.length - 1] ?? null,
+    });
+  }
+  missing.sort((a, b) => (a.dt.dt_name ?? a.dt.dt_id).localeCompare(b.dt.dt_name ?? b.dt.dt_id));
+  return { days: used, skipped, checked, found, missing };
 }
