@@ -6,6 +6,7 @@ import { getDb } from "@/lib/firebase";
 import { listSpoolDates, loadSpool } from "@/lib/gisSpool";
 import { SHARED_KEYS } from "@/lib/shared";
 import { rowsToPoints, ASSET_LABELS, type AssetType, type GisPoint } from "@/lib/gis";
+import { loadDtNames, type DtNames } from "@/lib/dtNames";
 
 const GisMap = lazy(() => import("@/components/GisMap"));
 
@@ -34,6 +35,8 @@ function MapPage() {
   const [visible, setVisible] = useState<Record<AssetType, boolean>>({ dss: true, ht: true, lt: true, cust: true });
   const [boundaries, setBoundaries] = useState(true);
   const [names, setNames] = useState<Record<string, string>>({});
+  const [dtNames, setDtNames] = useState<DtNames>({});
+  useEffect(() => { void loadDtNames().then(setDtNames); }, []);
   const worker = useRef<Worker | null>(null);
   const [spoolDates, setSpoolDates] = useState<{ date: string; count: number; where: string }[]>([]);
   const [spoolDate, setSpoolDate] = useState("");
@@ -195,7 +198,7 @@ function MapPage() {
       <div className="relative p-2">
         <ClientOnly fallback={<div className="h-full animate-pulse rounded-lg bg-muted" />}>
           <Suspense fallback={<div className="h-full animate-pulse rounded-lg bg-muted" />}>
-            <GisMap points={filtered} showBoundaries={boundaries} />
+            <GisMap points={filtered} showBoundaries={boundaries} dtNames={dtNames} />
           </Suspense>
         </ClientOnly>
         {!all.length && (

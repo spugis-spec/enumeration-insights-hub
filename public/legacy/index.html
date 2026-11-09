@@ -9568,6 +9568,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ---------- GIS point spooling (dashboard → map) ----------
   function findKey(keys, tests){ for(var i=0;i<tests.length;i++){ for(var j=0;j<keys.length;j++){ if(tests[i].test(String(keys[j]).trim())) return keys[j]; } } return null; }
   function toDk(v){ if(!v) return ''; var d=(v instanceof Date)?v:new Date(String(v)); if(isNaN(d.getTime())) return ''; return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  var gisDtMap={}, gisDtArr=[];
   function compact(rows){
     if(!Array.isArray(rows)||!rows.length) return [];
     var keys=Object.keys(rows[0]);
@@ -9578,20 +9579,31 @@ document.addEventListener('DOMContentLoaded', () => {
     var fe=findKey(keys,[/^feeder$/i,/feeder.?name/i,/feeder/i]);
     var dt=findKey(keys,[/creation.?date/i,/created.?date/i,/^date$/i,/date/i,/time/i]);
     var fi=findKey(keys,[/^fid$/i,/objectid/i,/globalid/i,/fid/i,/^id$/i]);
+    var bk=findKey(keys,[/^building.?code$/i,/building.?code/i,/^building$/i]);
+    var dk2=findKey(keys,[/^dt.?id$/i,/^dtid$/i]);
+    var dssKeys=keys.filter(function(k){ return /^dss_/i.test(String(k).trim()); }).sort(function(a,b){ return (/^dss_fdr/i.test(b)?1:0)-(/^dss_fdr/i.test(a)?1:0); });
+    function dtIdx(r){
+      var v=dk2? String(r[dk2]==null?'':r[dk2]).trim() : '';
+      if(!v){ for(var i=0;i<dssKeys.length;i++){ var x=r[dssKeys[i]]; if(x!=null && String(x).trim()){ v=String(x).trim(); break; } } }
+      v=v.replace(/\.0+$/,''); if(!v) return -1;
+      if(gisDtMap[v]===undefined){ gisDtMap[v]=gisDtArr.length; gisDtArr.push(v); }
+      return gisDtMap[v];
+    }
     var out=[];
     rows.forEach(function(r){
       var lat=Number(r[la]), lng=Number(r[lo]);
       if(!isFinite(lat)||!isFinite(lng)||!lat||!lng||Math.abs(lat)>90||Math.abs(lng)>180) return;
       var f=fe? String(r[fe]||'').trim():''; try{ if(f && feederLookup && feederLookup[f]) f=feederLookup[f]; }catch(e){}
-      out.push([Math.round(lat*1e6)/1e6, Math.round(lng*1e6)/1e6, us?String(r[us]||'').trim():'', f, dt?toDk(r[dt]):'', fi?String(r[fi]||''):'']);
+      out.push([Math.round(lat*1e6)/1e6, Math.round(lng*1e6)/1e6, us?String(r[us]||'').trim():'', f, dt?toDk(r[dt]):'', fi?String(r[fi]||''):'', bk?String(r[bk]==null?'':r[bk]).trim():'', dtIdx(r)]);
     });
     return out;
   }
   function buildPayload(){
     if(typeof uploadedData!=='object'||!uploadedData) return null;
+    gisDtMap={}; gisDtArr=[];
     var p={ dss:compact(uploadedData.dss), ht:compact(uploadedData.ht), lt:compact(uploadedData.lt), cust:compact(uploadedData.cust) };
     var n=p.dss.length+p.ht.length+p.lt.length+p.cust.length;
-    return n? { points:p, count:n, savedAt:Date.now() } : null;
+    return n? { points:p, count:n, savedAt:Date.now(), dts:gisDtArr } : null;
   }
   function idb(){ return new Promise(function(res,rej){ var q=indexedDB.open('eih-gis',1); q.onupgradeneeded=function(){ q.result.createObjectStore('points'); }; q.onsuccess=function(){ res(q.result); }; q.onerror=function(){ rej(q.error); }; }); }
   function idbPut(key,val){ return idb().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction('points','readwrite'); tx.objectStore('points').put(val,key); tx.oncomplete=res; tx.onerror=function(){ rej(tx.error); }; }); }); }
