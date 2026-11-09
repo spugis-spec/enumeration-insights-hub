@@ -2,9 +2,22 @@ import { ref, get } from "firebase/database";
 import { getDb } from "./firebase";
 import type { AssetType, GisPoint } from "./gis";
 
-/** Compact point saved by the dashboard: [lat, lng, user, feeder, date, fid]. */
-type Compact = [number, number, string, string, string, string];
-export type SpoolPayload = { points: Partial<Record<AssetType, Compact[]>>; count: number; savedAt: number };
+/**
+ * Compact point saved by the dashboard: [lat, lng, user, feeder, date, fid, buildingCode?, dtIndex?].
+ * dtIndex points into payload.dts (each DT ID is stored once). Older saves have only the first six values.
+ */
+type Compact = [number, number, string, string, string, string, string?, number?];
+export type SpoolPayload = { points: Partial<Record<AssetType, Compact[]>>; count: number; savedAt: number; dts?: string[] };
+
+/** Turns a saved spool into map points (pure, so it can be tested). */
+export function convertSpool(p: SpoolPayload): Record<AssetType, GisPoint[]> {
+  const dts = p.dts ?? [];
+  const conv = (t: AssetType): GisPoint[] =>
+    (p.points[t] ?? []).map(([lat, lng, user, feeder, d, fid, building, di]) => ({
+      type: t, lat, lng, user, feeder, date: d, fid, building: building ?? "", dtId: di != null && di >= 0 ? (dts[di] ?? "") : "", raw: {},
+    }));
+  return { dss: conv("dss"), ht: conv("ht"), lt: conv("lt"), cust: conv("cust") };
+}
 
 function idb(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
@@ -69,7 +82,5 @@ export async function loadSpool(date: string): Promise<Record<AssetType, GisPoin
     }
   }
   if (!p?.points) return null;
-  const conv = (t: AssetType): GisPoint[] =>
-    (p!.points[t] ?? []).map(([lat, lng, user, feeder, d, fid]) => ({ type: t, lat, lng, user, feeder, date: d, fid, raw: {} }));
-  return { dss: conv("dss"), ht: conv("ht"), lt: conv("lt"), cust: conv("cust") };
+  return convertSpool(p);
 }

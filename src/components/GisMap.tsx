@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { convexHull, ASSET_LABELS, type GisPoint } from "@/lib/gis";
+import { dtNameOf, type DtNames } from "@/lib/dtNames";
 
 const COLORS: Record<string, string> = {
   dss: "var(--chart-1)",
@@ -17,7 +18,7 @@ function resolve(cssVar: string) {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-export default function GisMap({ points, showBoundaries }: { points: GisPoint[]; showBoundaries: boolean }) {
+export default function GisMap({ points, showBoundaries, dtNames = {} }: { points: GisPoint[]; showBoundaries: boolean; dtNames?: DtNames }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
@@ -74,6 +75,8 @@ export default function GisMap({ points, showBoundaries }: { points: GisPoint[];
             <strong>${ASSET_LABELS[p.type]}</strong><br/>
             <b>Enumerator:</b> ${esc(p.user || "—")}<br/>
             <b>Feeder:</b> ${esc(p.feeder || "—")}<br/>
+            <b>DT Name:</b> ${esc(dtNameOf(p.dtId, dtNames) || p.dtId || "—")}<br/>
+            <b>Building Code:</b> ${esc(p.building || "—")}<br/>
             <b>Date:</b> ${esc(p.date || "—")}<br/>
             <b>FID:</b> ${esc(p.fid || "—")}<br/>
             <b>Location:</b> ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}
@@ -86,7 +89,7 @@ export default function GisMap({ points, showBoundaries }: { points: GisPoint[];
       const b = L.latLngBounds(points.map((p) => [p.lat, p.lng] as [number, number]));
       m.fitBounds(b, { padding: [30, 30], maxZoom: 16 });
     }
-  }, [points, showBoundaries]);
+  }, [points, showBoundaries, dtNames]);
 
   return <div ref={el} className="h-full w-full rounded-lg" />;
 }

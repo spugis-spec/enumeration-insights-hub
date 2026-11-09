@@ -15,6 +15,10 @@ export type GisPoint = {
   feeder: string;
   date: string; // YYYY-MM-DD or ""
   fid: string;
+  /** Building code of the capture, when the file has one. */
+  building?: string;
+  /** DT ID of the capture (a DT ID column, or a dss_* column); turned into a DT name on the map. */
+  dtId?: string;
   raw: Record<string, unknown>;
 };
 
@@ -45,6 +49,14 @@ export function rowsToPoints(rows: Record<string, unknown>[], type: AssetType): 
   const feederK = find(keys, [/^feeder$/i, /feeder.?name/i, /feeder/i]);
   const dateK = find(keys, [/creation.?date/i, /created.?date/i, /^date$/i, /date/i, /time/i]);
   const fidK = find(keys, [/^fid$/i, /objectid/i, /globalid/i, /fid/i, /^id$/i]);
+  const buildingK = find(keys, [/^building.?code$/i, /building.?code/i, /^building$/i]);
+  const dtIdK = find(keys, [/^dt.?id$/i, /^dtid$/i]);
+  const dssKeys = keys.filter((k) => /^dss_/i.test(k.trim())).sort((a, b) => Number(/^dss_fdr/i.test(b)) - Number(/^dss_fdr/i.test(a)));
+  const dtOf = (r: Record<string, unknown>) => {
+    let v = dtIdK && r[dtIdK] != null ? String(r[dtIdK]).trim() : "";
+    if (!v) for (const k of dssKeys) { const x = r[k]; if (x != null && String(x).trim()) { v = String(x).trim(); break; } }
+    return v.replace(/\.0+$/, "");
+  };
   if (!latK || !lngK) return [];
   const out: GisPoint[] = [];
   for (const r of rows) {
@@ -60,6 +72,8 @@ export function rowsToPoints(rows: Record<string, unknown>[], type: AssetType): 
       feeder: feederK ? String(r[feederK]).trim() : "",
       date: dateK ? toDateKey(r[dateK]) : "",
       fid: fidK ? String(r[fidK]) : "",
+      building: buildingK && r[buildingK] != null ? String(r[buildingK]).trim() : "",
+      dtId: dtOf(r),
       raw: r,
     });
   }
