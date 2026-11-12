@@ -137,3 +137,10 @@ The tool's own libraries (JSZip, PapaParse) are served from `public/legacy/merge
 - Uploaded files: read from a `building_code`/`Building Code` column and a `DT ID` column (or the first non-empty `dss_*` column).
 - Dashboard map points: the dashboard now also saves the building code and the DT (each DT stored once in `gisPoints/<date>/dts`). **Maps for dates saved before this update have no building code or DT**; re-save that date's dashboard (or re-upload the file in GIS Map) to add them.
 - Tests: `src/test/gis-popup-fields.test.ts`.
+
+## Export on phones, bigger network nodes, and adding performance to a saved date
+
+- **Export fits the phone.** Command Center exports now use a normal device-width viewport (the old fixed 1280px, zoomed-out viewport made the map and text huge and the cards squeezed on phones). The phone layout is single column; the KPI row, feeder cards and tables stack and scroll properly. Classic-view exports keep the old fixed-width viewport.
+- **Feeder cards.** The long list of enumerator names is replaced by a **👥 N enumerators worked** drop-down (works in the exported HTML too), next to **DT names captured**.
+- **Network nodes.** Nodes are larger, the dashed lines to the feeders are thicker and animated, and the view is cropped tightly around the nodes so there is no empty space.
+- **➕ Add performance to a saved date** (Dashboard action row, admin only). Pick a saved date, search and pick a person (everyone in the user mappings; it shows who is already on that date), key in DT/DSS, HT, LT, Customers, Issue log and the feeder worked, then save. It writes that person's row into `dashboards/<date>/<group>`, re-sorts, recalculates the group totals and refreshes the dashboard if that date is open. If the person is already on the date, their numbers are shown and replaced after a confirmation. Uses the existing `dashboards` rule, so no rules change is needed.
