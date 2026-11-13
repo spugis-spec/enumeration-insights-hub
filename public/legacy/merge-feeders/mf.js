@@ -13,7 +13,7 @@
 
   var SECTIONS = { dss: 'DT / Substation', ht: 'HT Pole', lt: 'LT Pole', cust: 'Customer Enumeration', issues: 'Issue Log' };
   var DATE_CANDIDATES = ['time', '__created', '__modified'];
-  var DEFAULT_KEEP = 'fid, structure_no, structure_number, latitude, longitude, username, model, time, feeder, dss_name, long_x, lat_y, customer_name, landlord_name, connection_status, billing_status, call_back_form_no, customer_no, building_code';
+  var DEFAULT_KEEP = 'fid, structure_no, structure_number, latitude, longitude, username, model, time, feeder, dss_name, long_x, lat_y, customer_name, landlord_name, connection_status, billing_status, call_back_form_no, customer_no, building_code, rmu_name, rmu_no';
 
   function loadScript(src) {
     return new Promise(function (res, rej) {
@@ -38,6 +38,7 @@
     '<p class="mf-sub">Runs entirely in your browser — no data leaves your computer. Upload the zipped CSV exports (e.g. ' +
     '<span class="mf-pill">issue_log-csv.zip</span> <span class="mf-pill">lt_pole-csv.zip</span> <span class="mf-pill">ht_pole-csv.zip</span> ' +
     '<span class="mf-pill">distribution_substation-csv.zip</span> <span class="mf-pill">customer_enumeration-csv.zip</span>), ' +
+    'plus <span class="mf-pill">ring_main_unit-csv.zip</span> if you have it — its rows are merged into the DT / Substation file, so you still end up with 5 files, ' +
     'pick your date/time column, export streamlined files, then attach them straight to the upload boxes above.</p>' +
 
     '<div class="mf-card"><h2><span class="mf-step">1</span> Upload zip file(s)</h2>' +
@@ -289,6 +290,7 @@
       processed = []; attachCard.style.display = 'none';
       if (fromDate || toDate) logLine('Filtering to: ' + (fromVal || 'the beginning') + ' → ' + (toVal || 'the end'), 'info');
 
+      // Pass 1: process every file (nothing is written yet, so ring main unit rows can be folded into the DT file first)
       for (var i = 0; i < loadedFiles.length; i++) {
         var f = loadedFiles[i];
         try {
@@ -303,27 +305,38 @@
           var rowLabel = result.filtered
             ? result.rows.length.toLocaleString() + ' of ' + result.totalDataRows.toLocaleString() + ' rows (date-filtered)'
             : result.rows.length.toLocaleString() + ' rows';
-          processed.push({ f: f, name: base + '_MERGED', result: result, section: detectSection(f), include: true, rowLabel: rowLabel });
+          processed.push({ f: f, name: base + '_MERGED', result: result, section: detectSection(f), include: true, rowLabel: rowLabel, isRmu: isRmu(f) });
+        } catch (err) {
+          logLine(f.name + ' — error: ' + err.message, 'err');
+        }
+      }
 
-          if (!doExport) { logLine(f.name + ' — ' + rowLabel + ' processed', 'ok'); continue; }
+      // Ring Main Unit files are not a 6th upload box: their rows join the DT / Substation file.
+      foldRingMainUnits();
+
+      // Pass 2: write the files (the folded RMU rows are already inside the DT / Substation file)
+      for (var pi = 0; pi < processed.length; pi++) {
+        var p = processed[pi], result2 = p.result, rowLabel2 = p.rowLabel, base2 = p.name;
+        try {
+          if (!doExport) { logLine(p.name + ' — ' + rowLabel2 + ' processed', 'ok'); continue; }
 
           var outBuf, outName, blobType;
           if (format === 'csv') {
-            outBuf = buildCsv(result, $('#mf-protectIds').checked);
-            outName = base + '_MERGED.csv'; blobType = 'text/csv';
+            outBuf = buildCsv(result2, $('#mf-protectIds').checked);
+            outName = base2 + '.csv'; blobType = 'text/csv';
           } else {
             var wb = XLSX.utils.book_new();
-            var ws = XLSX.utils.aoa_to_sheet([result.headers].concat(result.rows));
-            var dtIdx2 = result.headers.indexOf('DT ID');
+            var ws = XLSX.utils.aoa_to_sheet([result2.headers].concat(result2.rows));
+            var dtIdx2 = result2.headers.indexOf('DT ID');
             if (dtIdx2 >= 0) {
-              for (var r = 1; r <= result.rows.length; r++) {
+              for (var r = 1; r <= result2.rows.length; r++) {
                 var cell = ws[XLSX.utils.encode_cell({ r: r, c: dtIdx2 })];
                 if (cell && cell.v !== '') { cell.t = 's'; cell.v = String(cell.v); cell.z = '@'; }
               }
             }
             XLSX.utils.book_append_sheet(wb, ws, 'Merged');
             outBuf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
-            outName = base + '_MERGED.xlsx'; blobType = 'application/octet-stream';
+            outName = base2 + '.xlsx'; blobType = 'application/octet-stream';
           }
 
           var wroteToFolder = false;
@@ -336,18 +349,18 @@
               await writable.write(outBuf);
               await writable.close();
               wroteToFolder = true;
-              logLine(outName + ' — ' + rowLabel + ' written to folder', 'ok');
+              logLine(outName + ' — ' + rowLabel2 + ' written to folder', 'ok');
             } catch (folderErr) {
               logLine(outName + ' — couldn\'t write to folder (' + folderErr.message + '), downloading instead', 'warn');
             }
           }
           if (!wroteToFolder) {
             downloadBlob(outBuf, outName, blobType);
-            logLine(outName + ' — ' + rowLabel + ' downloaded', 'ok');
+            logLine(outName + ' — ' + rowLabel2 + ' downloaded', 'ok');
             await new Promise(function (r) { setTimeout(r, 350); });
           }
         } catch (err) {
-          logLine(f.name + ' — error: ' + err.message, 'err');
+          logLine(p.name + ' — error: ' + err.message, 'err');
         }
       }
 
@@ -357,6 +370,54 @@
     }
     processBtn.addEventListener('click', function () { runProcess(true); });
     processOnlyBtn.addEventListener('click', function () { runProcess(false); });
+
+    // ---------- Ring Main Unit: merged INTO the DT / Substation file (still 5 output files) ----------
+    function isRmu(f) {
+      var n = (f.zipName + ' ' + f.name).toLowerCase().replace(/[_\-.\s]+/g, ' ');
+      return /\bring main\b|\brmu\b/.test(n);
+    }
+    /** Append every row of `extra` to `base`, lining columns up by header name (a column only one file has is added, blank in the other). */
+    function appendRows(base, extra) {
+      var headers = base.headers.slice();
+      var lower = headers.map(function (h) { return String(h).toLowerCase(); });
+      extra.headers.forEach(function (h) {
+        if (lower.indexOf(String(h).toLowerCase()) < 0) { headers.push(h); lower.push(String(h).toLowerCase()); }
+      });
+      function remap(rows, from) {
+        var fromLower = from.map(function (h) { return String(h).toLowerCase(); });
+        return rows.map(function (row) {
+          return lower.map(function (h) { var ix = fromLower.indexOf(h); return ix >= 0 && row[ix] != null ? row[ix] : ''; });
+        });
+      }
+      var dtCols = base.dtIdCols.slice();
+      extra.dtIdCols.forEach(function (c) { if (dtCols.indexOf(c) < 0) dtCols.push(c); });
+      return {
+        headers: headers, rows: remap(base.rows, base.headers).concat(remap(extra.rows, extra.headers)),
+        totalDataRows: base.totalDataRows + extra.totalDataRows, filtered: base.filtered || extra.filtered,
+        dtIdCols: dtCols, dtIdSciCount: base.dtIdSciCount + extra.dtIdSciCount
+      };
+    }
+    function foldRingMainUnits() {
+      var rmus = processed.filter(function (p) { return p.isRmu; });
+      if (!rmus.length) return;
+      var target = processed.filter(function (p) { return !p.isRmu && p.section === 'dss'; })[0];
+      var rest = rmus;
+      if (!target) {
+        target = rmus[0]; target.isRmu = false; target.section = 'dss'; rest = rmus.slice(1);
+        logLine('No distribution_substation file was loaded, so ' + target.f.name + ' goes into the DT / Substation box on its own.', 'warn');
+      }
+      var added = 0;
+      rest.forEach(function (p) {
+        target.result = appendRows(target.result, p.result);
+        added += p.result.rows.length;
+        processed.splice(processed.indexOf(p), 1);
+        logLine(p.f.name + ' — ' + p.result.rows.length.toLocaleString() + ' ring main unit rows merged into the DT / Substation file (' + target.f.name + ')', 'ok');
+      });
+      if (added) {
+        var r = target.result;
+        target.rowLabel = (r.filtered ? r.rows.length.toLocaleString() + ' of ' + r.totalDataRows.toLocaleString() + ' rows (date-filtered)' : r.rows.length.toLocaleString() + ' rows') + ', incl. ' + added.toLocaleString() + ' ring main unit';
+      }
+    }
 
     function mergeFile(f, keepFields, fromDate, toDate) {
       var headers = f.headers, data = f.data, selectedDate = f.selectedDate, feederMode = f.feederMode;
@@ -415,7 +476,7 @@
 
       // DT ID: merge every column whose header begins with "dss_fdr"; per row the first non-empty value wins.
       var dtIdCols = [];
-      headers.forEach(function (h, idx) { if ((h == null ? '' : h).toString().trim().toLowerCase().startsWith('dss_fdr')) dtIdCols.push(idx); });
+      headers.forEach(function (h, idx) { if (/^(dss|rmu)_fdr/.test((h == null ? '' : h).toString().trim().toLowerCase())) dtIdCols.push(idx); });
       if (dtIdCols.length) { outHeaders.push('DT ID'); mappings.push({ kind: 'dtid', idxs: dtIdCols }); }
 
       var dtIdSciCount = 0, rows = [];
@@ -443,6 +504,7 @@
     /** Guess the Dashboard upload box from the file name first, then from its columns. */
     function detectSection(f) {
       var name = (f.zipName + ' ' + f.name).toLowerCase().replace(/[_\-.\s]+/g, ' ');
+      if (/\bring main\b|\brmu\b/.test(name)) return 'dss';
       if (/\bissues?\b/.test(name)) return 'issues';
       if (/\blt\b|low tension/.test(name)) return 'lt';
       if (/\bht\b|high tension/.test(name)) return 'ht';
