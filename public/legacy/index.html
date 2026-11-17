@@ -331,6 +331,10 @@
         /* ── Print ── */
         @media print { .no-print { display: none !important; } .print-break { page-break-before: always; } }
 
+        /* ── Weekly Target Report: headings stay pinned while the names/rows scroll ── */
+        #wkTableWrap { overflow: auto; max-height: 62vh; }
+        #wkTableWrap thead th { position: sticky; top: 0; background: #e0e7ff; z-index: 3; }
+
         /* ── Responsive ── */
         @media (max-width: 640px) {
             #mainContent .text-center.mb-8 { padding: 16px; }
@@ -2540,7 +2544,7 @@
     function addMappingRow(group, username='', fullname='') {
         const container=document.getElementById(`${group}MappingContainer`);
         const row=document.createElement('div'); row.className='flex gap-1 fade-in';
-        row.innerHTML=`<input type="text" placeholder="Username" value="${username}" class="flex-1 px-2 py-1 border border-gray-300 rounded text-xs" onchange="updateMappings('${group}')"><input type="text" placeholder="Full Name" value="${fullname}" class="flex-1 px-2 py-1 border border-gray-300 rounded text-xs" onchange="updateMappings('${group}')"><input type="tel" placeholder="WhatsApp no." value="${(window.eihPhones||{})[String(username).trim().toLowerCase()]||''}" class="eih-phone w-28 px-2 py-1 border border-green-300 rounded text-xs" onchange="eihSetPhone(this.parentElement.querySelector('input').value,this.value)"><button onclick="this.parentElement.remove();updateMappings('${group}');" class="px-2 text-red-500 hover:text-red-700 text-sm">✕</button>`;
+        row.innerHTML=`<input type="text" placeholder="Username" value="${username}" class="flex-1 px-2 py-1 border border-gray-300 rounded text-xs" onchange="updateMappings('${group}')"><input type="text" placeholder="Full Name" value="${fullname}" class="flex-1 px-2 py-1 border border-gray-300 rounded text-xs" onchange="updateMappings('${group}')"><input type="text" placeholder="Staff ID" value="${(window.eihStaffIds||{})[String(username).trim().toLowerCase()]||''}" class="eih-staffid w-24 px-2 py-1 border border-indigo-300 rounded text-xs" onchange="eihSetStaffId(this.parentElement.querySelector('input').value,this.value)"><input type="tel" placeholder="WhatsApp no." value="${(window.eihPhones||{})[String(username).trim().toLowerCase()]||''}" class="eih-phone w-28 px-2 py-1 border border-green-300 rounded text-xs" onchange="eihSetPhone(this.parentElement.querySelector('input').value,this.value)"><button onclick="this.parentElement.remove();updateMappings('${group}');" class="px-2 text-red-500 hover:text-red-700 text-sm">✕</button>`;
         container.appendChild(row);
     }
 
@@ -5208,6 +5212,7 @@
             const rows = (results||[]).map((r,i)=>({
                 'S/N':i+1,
                 'Username':r.username,
+                'Staff ID':(window.eihStaffIdFor?window.eihStaffIdFor(r.username):''),
                 'Full Name':r.fullname,
                 'DT/DSS':r.dss||0,
                 'HT Pole':r.ht||0,
@@ -5232,6 +5237,7 @@
                 rows.push({
                     'S/N': rows.length+1,
                     'Username': r.username,
+                    'Staff ID': (window.eihStaffIdFor?window.eihStaffIdFor(r.username):''),
                     'Full Name': r.fullname,
                     'DT/DSS': r.dss||0,
                     'HT Pole': r.ht||0,
@@ -8080,7 +8086,7 @@
         </div>
       </div>
       <div id="wkKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:12px;"></div>
-      <div id="wkTableWrap" style="overflow-x:auto;"></div>
+      <div id="wkTableWrap" style="overflow:auto;max-height:62vh;"></div>
       <p style="font-size:0.68rem;color:#64748b;margin-top:10px;">Rules: unreported days are ignored. <b>Excused / Sick days are skipped</b> (no penalty). <b>Absent days are counted as 0</b> so poor attendance shows. Days with a 0 total whose status or remark mentions an <b>ISSUE</b> (e.g. LOGISTICS ISSUE) are <b>excluded</b> from the computation. Each staff target = daily target × the number of days actually counted for that staff.</p>
     </div>
   </div>
@@ -8737,7 +8743,7 @@ body{font-family:'DM Sans',Segoe UI,Arial,sans-serif;background:#f0f4f8;color:#0
 .kpi{background:#f8fafc;border-left:3px solid #2563eb;border-radius:8px;padding:9px 11px;}
 .kpi b{display:block;font-size:1.15rem;} .kpi span{font-size:.62rem;color:#64748b;text-transform:uppercase;}
 table{width:100%;border-collapse:collapse;font-size:11px;} th,td{border:1px solid #e2e8f0;padding:5px 6px;}
-th{background:#e0e7ff;} .c{text-align:center;} .ok{background:#dcfce7;color:#166534;font-weight:600;}
+th{background:#e0e7ff;} thead th{position:sticky;top:0;z-index:3;background:#e0e7ff;} .c{text-align:center;} .ok{background:#dcfce7;color:#166534;font-weight:600;}
 .bad{background:#fee2e2;color:#991b1b;font-weight:600;} .warn{background:#fef3c7;color:#92400e;font-weight:600;}
 .muted{color:#cbd5e1;} .tag-A{background:#fee2e2;color:#991b1b;font-weight:700;} .tag-ISS{background:#f1f5f9;color:#64748b;font-weight:700;}
 .tag-E,.tag-S{background:#eef2ff;color:#4338ca;font-weight:700;}
@@ -8752,7 +8758,7 @@ th{background:#e0e7ff;} .c{text-align:center;} .ok{background:#dcfce7;color:#166
 <div class="kpi"><span>Special assignment / exempt</span><b>${exempt}</b></div>
 <div class="kpi"><span>Total captures</span><b>${weeklyPerfRows.reduce((a, r) => a + r.total, 0)}</b></div>
 </div>
-<div style="overflow-x:auto;padding:0 20px 16px;"><table><thead><tr>
+<div style="overflow:auto;max-height:78vh;padding:0 20px 16px;"><table><thead><tr>
 <th>S/N</th><th style="text-align:left;">Staff</th><th>Team</th>${dayCols}
 <th>Week Total</th><th>Days Counted</th><th>Target</th><th>Avg/Day</th><th>% Target</th>
 <th>Outcome</th><th>Attendance</th><th>Monthly Pace</th><th>Remark</th>
@@ -9534,6 +9540,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }).catch(function(){});
   }
   setInterval(refreshPhoneInputs, 3000);
+
+  // ---------- Enumerator Staff IDs (kept apart from `mappings`, like the WhatsApp numbers) ----------
+  try { window.eihStaffIds = JSON.parse(localStorage.getItem('eih.staffIds')||'{}'); } catch(e){ window.eihStaffIds={}; }
+  function saveStaffIdsLocal(){ try{ localStorage.setItem('eih.staffIds', JSON.stringify(eihStaffIds)); }catch(e){} }
+  window.eihSetStaffId = function(username, staffId){
+    var u=String(username||'').trim().toLowerCase(); if(!u){ showStatus('Enter the username first, then the Staff ID','warning'); return; }
+    var p=String(staffId||'').trim();
+    if(p) eihStaffIds[u]=p; else delete eihStaffIds[u];
+    saveStaffIdsLocal();
+    if(firebaseInitialized && isAdminMode){
+      database.ref('enumeratorStaffIds/'+u.replace(/[.#$\[\]\/]/g,'_')).set(p||null).then(function(){ showStatus('Staff ID saved for '+u,'success'); }).catch(function(e){ showStatus('Saved on this device only: '+e.message,'warning'); });
+    } else showStatus('Staff ID saved on this device (sign in as admin to save to the cloud)','info');
+  };
+  window.eihStaffIdFor = function(username){ return (window.eihStaffIds||{})[String(username||'').trim().toLowerCase()]||''; };
+  function refreshStaffIdInputs(){
+    document.querySelectorAll('input.eih-staffid').forEach(function(inp){
+      var u=(inp.parentElement.querySelector('input').value||'').trim().toLowerCase();
+      if(!inp.value && eihStaffIds[u]) inp.value=eihStaffIds[u];
+    });
+  }
+  if(firebaseInitialized){
+    database.ref('enumeratorStaffIds').once('value').then(function(s){
+      var v=s.val()||{}; Object.keys(v).forEach(function(k){ if(v[k]) eihStaffIds[k]=String(v[k]); });
+      saveStaffIdsLocal(); refreshStaffIdInputs();
+    }).catch(function(){});
+  }
+  setInterval(refreshStaffIdInputs, 3000);
 
   // ---------- WhatsApp notice buttons ----------
   var waQueue=[];
