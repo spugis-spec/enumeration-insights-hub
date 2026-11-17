@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Section, Stat, selectCls } from "./common";
 import { useConfirm } from "./ConfirmDialog";
 import { DtCheckDialog } from "./DtCheckDialog";
+import { DtFileCheckDialog } from "./DtFileCheckDialog";
 
 const DEFAULT_KEY = "eih_alloc_default";
 type FeederDefault = { feederId: string; statusF: string };
@@ -38,6 +39,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
   const [bulkBusy, setBulkBusy] = useState(false);
   useEffect(() => { setSel(new Set()); }, [feederId]);
   const [checkOpen, setCheckOpen] = useState(false);
+  const [fileCheckOpen, setFileCheckOpen] = useState(false);
   // "Keep as default": this feeder and filter (for example Assigned (Ongoing)) open first, every time, on this device.
   const [def, setDef] = useState<FeederDefault | null>(null);
   const appliedDef = useRef(false);
@@ -369,6 +371,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
               Select all assigned ({stats.assigned})
             </Button>
                 <Button className="h-11" onClick={() => setCheckOpen(true)}>🔎 Check DTs by date</Button>
+                <Button variant="outline" className="h-11" onClick={() => setFileCheckOpen(true)}>📁 Check DTs against a file</Button>
                 {isAdmin && feeder && (
               <Button variant={feeder.locked ? "default" : "outline"} className="h-11" onClick={toggleLock}>
                 {feeder.locked ? <><Lock /> Locked: unlock</> : <><Unlock /> Lock feeder</>}
@@ -498,6 +501,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
       {allocDt && <AllocateDialog m={m} dt={allocDt} openByEnum={openByEnum} onClose={() => setAllocDt(null)} />}
       {statusDt && <StatusDialog dt={statusDt} onClose={() => setStatusDt(null)} />}
       <DtCheckDialog m={m} feederId={feederId} open={checkOpen} onOpenChange={setCheckOpen} onComplete={askBulkComplete} busy={bulkBusy} />
+      <DtFileCheckDialog m={m} feederId={feederId} open={fileCheckOpen} onOpenChange={setFileCheckOpen} onComplete={askBulkComplete} busy={bulkBusy} />
       {dialog}
     </div>
   );

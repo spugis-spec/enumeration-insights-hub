@@ -171,24 +171,24 @@ export function ReportTable({
         )}
       </div>
       
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+      <div className="overflow-auto max-h-[70vh]">
+        <table className="w-full text-sm [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left px-4 py-3 font-semibold text-gray-700 sticky left-0 bg-gray-50 min-w-[350px] z-10">
+              <th className="text-left px-4 py-3 font-semibold text-gray-700 sticky left-0 bg-gray-50 min-w-[350px] z-30">
                 Feeder Name
                 {editable && <span className="text-xs font-normal text-gray-400 ml-2">(click to edit)</span>}
               </th>
               <th className="text-center px-4 py-3 font-semibold text-blue-700 bg-blue-50">Mapped DT (Week)</th>
-              <th className="text-center px-4 py-3 font-semibold text-gray-700">Mapped DT (Total)</th>
+              <th className="text-center px-4 py-3 font-semibold text-gray-700 bg-gray-50">Mapped DT (Total)</th>
               <th className="text-center px-4 py-3 font-semibold text-green-700 bg-green-50">HT Poles (Week)</th>
-              <th className="text-center px-4 py-3 font-semibold text-gray-700">HT Poles (Total)</th>
+              <th className="text-center px-4 py-3 font-semibold text-gray-700 bg-gray-50">HT Poles (Total)</th>
               <th className="text-center px-4 py-3 font-semibold text-orange-700 bg-orange-50">LT Poles (Week)</th>
-              <th className="text-center px-4 py-3 font-semibold text-gray-700">LT Poles (Total)</th>
+              <th className="text-center px-4 py-3 font-semibold text-gray-700 bg-gray-50">LT Poles (Total)</th>
               <th className="text-center px-4 py-3 font-semibold text-pink-700 bg-pink-50">Consumer Pts (Week)</th>
-              <th className="text-center px-4 py-3 font-semibold text-gray-700">Consumer Pts (Total)</th>
+              <th className="text-center px-4 py-3 font-semibold text-gray-700 bg-gray-50">Consumer Pts (Total)</th>
               <th className="text-center px-4 py-3 font-semibold text-red-700 bg-red-50">Issue Log (Week)</th>
-              <th className="text-center px-4 py-3 font-semibold text-gray-700">Issue Log (Total)</th>
+              <th className="text-center px-4 py-3 font-semibold text-gray-700 bg-gray-50">Issue Log (Total)</th>
             </tr>
           </thead>
           <tbody>

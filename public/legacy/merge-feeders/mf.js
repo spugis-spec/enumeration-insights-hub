@@ -3,6 +3,9 @@
  * The processing, folder export and file formats are the same as the standalone MergeFeeders_FINAL2.html.
  * Added: step 5 attaches the processed data to the Upload Data Files boxes (it detects DT / HT Pole /
  * LT Pole / Customer Enumeration / Issue Log) and can generate the report for a chosen date.
+ * Added: an Auto-run card that chains the whole flow in one click (load zips, __created as the
+ * date/time source, process + export to the remembered/default folder, attach, then generate the
+ * report for one chosen date). The manual steps are unchanged.
  * Runs entirely in the browser. Its libraries (JSZip, PapaParse) are served from this folder, not a CDN.
  */
 (function () {
@@ -13,7 +16,7 @@
 
   var SECTIONS = { dss: 'DT / Substation', ht: 'HT Pole', lt: 'LT Pole', cust: 'Customer Enumeration', issues: 'Issue Log' };
   var DATE_CANDIDATES = ['time', '__created', '__modified'];
-  var DEFAULT_KEEP = 'fid, structure_no, structure_number, latitude, longitude, username, model, time, feeder, dss_name, long_x, lat_y, customer_name, landlord_name, connection_status, billing_status, call_back_form_no, customer_no, building_code, rmu_name, rmu_no';
+  var DEFAULT_KEEP = 'fid, structure_no, structure_number, latitude, longitude, username, model, time, feeder, dss_name, long_x, lat_y, customer_name, landlord_name, connection_status, billing_status, call_back_form_no, customer_no, building_code';
 
   function loadScript(src) {
     return new Promise(function (res, rej) {
@@ -40,6 +43,12 @@
     '<span class="mf-pill">distribution_substation-csv.zip</span> <span class="mf-pill">customer_enumeration-csv.zip</span>), ' +
     'plus <span class="mf-pill">ring_main_unit-csv.zip</span> if you have it — its rows are merged into the DT / Substation file, so you still end up with 5 files, ' +
     'pick your date/time column, export streamlined files, then attach them straight to the upload boxes above.</p>' +
+
+    '<div class="mf-card" id="mf-autoCard"><h2>⚡ Auto-run (one click)</h2>' +
+    '<p class="mf-hint">Drop all the zips here, pick the <b>report date</b>, and press Auto-run: the tool loads and inspects the files, uses <code>__created</code> as the date/time source, processes and exports them (to the folder chosen in Step 4 below — your last used folder is remembered — or to your normal Downloads folder), attaches them to the Upload Data Files boxes, and generates the report for that date alone. Keep this tab open while it runs. Prefer to do it yourself? The manual steps 1–5 below work exactly as before.</p>' +
+    '<div class="mf-kv"><div><label class="mf-small">All zip files</label><input type="file" id="mf-autoZips" accept=".zip" multiple></div>' +
+    '<div><label class="mf-small">Report date</label><input type="date" id="mf-autoDate"></div></div>' +
+    '<div class="mf-btn-row"><button id="mf-autoBtn">⚡ Auto-run everything</button><span id="mf-autoStatus" class="mf-muted"></span></div></div>' +
 
     '<div class="mf-card"><h2><span class="mf-step">1</span> Upload zip file(s)</h2>' +
     '<p class="mf-hint">Select one or more .zip files. Each zip should contain a single CSV (or Excel) export.</p>' +
@@ -143,6 +152,10 @@
     loadBtn.addEventListener('click', async function () {
       var files = zipInput.files;
       if (!files || files.length === 0) { loadStatus.textContent = 'Please choose at least one .zip file first.'; return; }
+      await loadZips(files);
+    });
+
+    async function loadZips(files) {
       loadBtn.disabled = true;
       loadStatus.textContent = 'Reading...';
       loadedFiles = []; processed = []; attachCard.style.display = 'none';
@@ -192,7 +205,8 @@
       loadStatus.textContent = loadedFiles.length + ' file(s) ready.';
       var show = loadedFiles.length ? 'block' : 'none';
       filesCard.style.display = show; keepCard.style.display = show; exportCard.style.display = show;
-    });
+      return loadedFiles.length;
+    }
 
     function renderFilesTable() {
       filesTbody.innerHTML = '';
@@ -224,6 +238,35 @@
       });
     }
 
+    // ---------- Remember the output folder between visits ----------
+    // The folder handle is kept in IndexedDB; the browser may still ask for
+    // permission again, which a button click (Process / Auto-run) can grant.
+    function idbOpen() {
+      return new Promise(function (res, rej) {
+        var rq = indexedDB.open('mf-settings', 1);
+        rq.onupgradeneeded = function () { rq.result.createObjectStore('kv'); };
+        rq.onsuccess = function () { res(rq.result); };
+        rq.onerror = function () { rej(rq.error); };
+      });
+    }
+    async function saveDirHandle(h) {
+      try { var db = await idbOpen(); db.transaction('kv', 'readwrite').objectStore('kv').put(h, 'dirHandle'); } catch (e) { /* not critical */ }
+    }
+    async function restoreDirHandle() {
+      try {
+        var db = await idbOpen();
+        var h = await new Promise(function (res) {
+          var rq = db.transaction('kv').objectStore('kv').get('dirHandle');
+          rq.onsuccess = function () { res(rq.result || null); };
+          rq.onerror = function () { res(null); };
+        });
+        if (!h) return null;
+        var perm = await h.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') perm = await h.requestPermission({ mode: 'readwrite' });
+        return perm === 'granted' ? h : null;
+      } catch (e) { return null; }
+    }
+
     // ---------- Step 4a: pick output folder ----------
     pickFolderBtn.addEventListener('click', async function () {
       if (!window.showDirectoryPicker) {
@@ -243,6 +286,7 @@
         dirHandle = handle;
         folderStatus.textContent = 'Output folder selected: "' + dirHandle.name + '". Files will be written directly there.';
         folderStatus.classList.add('set');
+        saveDirHandle(handle);
       } catch (err) { /* user cancelled the picker */ }
     });
 
@@ -288,6 +332,15 @@
       processBtn.disabled = true; processOnlyBtn.disabled = true;
       logEl.style.display = 'block'; logEl.innerHTML = '';
       processed = []; attachCard.style.display = 'none';
+      if (doExport && !dirHandle) {
+        var restored = await restoreDirHandle();
+        if (restored) {
+          dirHandle = restored;
+          folderStatus.textContent = 'Output folder: "' + dirHandle.name + '" (remembered from last time). Files will be written directly there.';
+          folderStatus.classList.add('set');
+          logLine('Writing exports to the remembered folder "' + dirHandle.name + '".', 'info');
+        }
+      }
       if (fromDate || toDate) logLine('Filtering to: ' + (fromVal || 'the beginning') + ' → ' + (toVal || 'the end'), 'info');
 
       // Pass 1: process every file (nothing is written yet, so ring main unit rows can be folded into the DT file first)
@@ -476,7 +529,7 @@
 
       // DT ID: merge every column whose header begins with "dss_fdr"; per row the first non-empty value wins.
       var dtIdCols = [];
-      headers.forEach(function (h, idx) { if (/^(dss|rmu)_fdr/.test((h == null ? '' : h).toString().trim().toLowerCase())) dtIdCols.push(idx); });
+      headers.forEach(function (h, idx) { if ((h == null ? '' : h).toString().trim().toLowerCase().startsWith('dss_fdr')) dtIdCols.push(idx); });
       if (dtIdCols.length) { outHeaders.push('DT ID'); mappings.push({ kind: 'dtid', idxs: dtIdCols }); }
 
       var dtIdSciCount = 0, rows = [];
@@ -553,13 +606,15 @@
     function setAttachStatus(msg, color) { var el = $('#mf-attachStatus'); el.textContent = msg; el.style.color = color || ''; }
     function pendingReads() { try { return pendingUploadReads; } catch (e) { return 0; } }
 
-    $('#mf-attachBtn').addEventListener('click', async function () {
-      if (typeof window.handleFileUpload !== 'function') { setAttachStatus('The upload boxes were not found on this page.', '#f87171'); return; }
+    $('#mf-attachBtn').addEventListener('click', function () { attachProcessed(); });
+
+    async function attachProcessed() {
+      if (typeof window.handleFileUpload !== 'function') { setAttachStatus('The upload boxes were not found on this page.', '#f87171'); return false; }
       var picks = processed.filter(function (p) { return p.include && p.section; });
-      if (!picks.length) { setAttachStatus('Nothing selected. Pick an upload box for at least one file.', '#fbbf24'); return; }
+      if (!picks.length) { setAttachStatus('Nothing selected. Pick an upload box for at least one file.', '#fbbf24'); return false; }
       var seen = {}, dup = null;
       picks.forEach(function (p) { if (seen[p.section]) dup = p.section; seen[p.section] = true; });
-      if (dup) { setAttachStatus('Two files are set to ' + SECTIONS[dup] + '. Only one file fits each upload box: untick or change one.', '#f87171'); return; }
+      if (dup) { setAttachStatus('Two files are set to ' + SECTIONS[dup] + '. Only one file fits each upload box: untick or change one.', '#f87171'); return false; }
 
       var btn = $('#mf-attachBtn'); btn.disabled = true; setAttachStatus('Attaching…');
       try {
@@ -580,14 +635,19 @@
         if (!$('#mf-repFrom').value) { $('#mf-repFrom').value = $('#mf-dateFrom').value; $('#mf-repTo').value = $('#mf-dateTo').value; }
       } catch (err) {
         setAttachStatus('Could not attach: ' + err.message, '#f87171');
+        return false;
       } finally { btn.disabled = false; }
-    });
+      return true;
+    }
 
     $('#mf-reportBtn').addEventListener('click', function () {
-      var from = $('#mf-repFrom').value, to = $('#mf-repTo').value;
-      if (!from) { setAttachStatus('Pick the report date first.', '#fbbf24'); return; }
+      generateReportFor($('#mf-repFrom').value, $('#mf-repTo').value);
+    });
+
+    function generateReportFor(from, to) {
+      if (!from) { setAttachStatus('Pick the report date first.', '#fbbf24'); return false; }
       var startEl = document.getElementById('startDate'), endEl = document.getElementById('endDate');
-      if (!startEl || !endEl || typeof window.generateReport !== 'function') { setAttachStatus('The Dashboard report controls were not found.', '#f87171'); return; }
+      if (!startEl || !endEl || typeof window.generateReport !== 'function') { setAttachStatus('The Dashboard report controls were not found.', '#f87171'); return false; }
       var range = !!(to && to !== from);
       var radio = document.querySelector('input[name="dateMode"][value="' + (range ? 'range' : 'single') + '"]');
       if (radio) radio.checked = true;
@@ -596,6 +656,39 @@
       endEl.value = range ? to : from;
       setAttachStatus('Report requested for ' + from + (range ? ' to ' + to : '') + '. Open it with the Take me to Dashboard button.');
       window.generateReport();
+      return true;
+    }
+
+    // ---------- Auto-run: load → __created → process + export → attach → report ----------
+    var autoBtn = $('#mf-autoBtn'), autoStatus = $('#mf-autoStatus');
+    autoBtn.addEventListener('click', async function () {
+      var files = $('#mf-autoZips').files;
+      var date = $('#mf-autoDate').value;
+      if (!files || !files.length) { autoStatus.textContent = 'Choose the zip files first.'; return; }
+      if (!date) { autoStatus.textContent = 'Pick the report date first.'; return; }
+      autoBtn.disabled = true;
+      try {
+        autoStatus.textContent = '1/4 Loading and inspecting ' + files.length + ' zip(s)…';
+        var n = await loadZips(files);
+        if (!n) { autoStatus.textContent = 'No usable files were found in those zips.'; return; }
+        // Auto-run always uses __created as the date/time source where a file has it.
+        loadedFiles.forEach(function (f) { if (f.dateOptions.indexOf('__created') >= 0) f.selectedDate = '__created'; });
+        renderFilesTable();
+        // Export everything (no date filtering in Step 4); the report picks the one date.
+        $('#mf-dateFrom').value = ''; $('#mf-dateTo').value = '';
+        autoStatus.textContent = '2/4 Processing and exporting…';
+        await runProcess(true);
+        if (!processed.length) { autoStatus.textContent = 'Nothing was processed — see the log in Step 4.'; return; }
+        autoStatus.textContent = '3/4 Attaching to the Upload Data Files boxes…';
+        var attached = await attachProcessed();
+        if (!attached) { autoStatus.textContent = 'Attach did not finish — see the message in Step 5; you can still attach manually there.'; return; }
+        autoStatus.textContent = '4/4 Generating the report for ' + date + '…';
+        $('#mf-repFrom').value = date; $('#mf-repTo').value = '';
+        generateReportFor(date, '');
+        autoStatus.textContent = '✅ Done — exported, attached, and the report for ' + date + ' was generated. Open it with the Take me to Dashboard button.';
+      } catch (err) {
+        autoStatus.textContent = 'Auto-run stopped: ' + err.message;
+      } finally { autoBtn.disabled = false; }
     });
   }
 
