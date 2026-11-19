@@ -500,8 +500,8 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
 
       {allocDt && <AllocateDialog m={m} dt={allocDt} openByEnum={openByEnum} onClose={() => setAllocDt(null)} />}
       {statusDt && <StatusDialog dt={statusDt} onClose={() => setStatusDt(null)} />}
-      <DtCheckDialog m={m} feederId={feederId} open={checkOpen} onOpenChange={setCheckOpen} onComplete={askBulkComplete} busy={bulkBusy} />
-      <DtFileCheckDialog m={m} feederId={feederId} open={fileCheckOpen} onOpenChange={setFileCheckOpen} onComplete={askBulkComplete} busy={bulkBusy} />
+      <DtCheckDialog m={m} feederId={feederId} open={checkOpen} onOpenChange={setCheckOpen} onComplete={bulkComplete} busy={bulkBusy} />
+      <DtFileCheckDialog m={m} feederId={feederId} open={fileCheckOpen} onOpenChange={setFileCheckOpen} onComplete={bulkComplete} busy={bulkBusy} />
       {dialog}
     </div>
   );
