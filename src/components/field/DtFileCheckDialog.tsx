@@ -92,6 +92,7 @@ export function DtFileCheckDialog({ m, feederId, open, onOpenChange, onComplete,
   const [feeder, setFeeder] = useState(feederId || m.feeders[0]?.feeder_id || "");
   const [date, setDate] = useState(today);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const runRef = useRef(0);
 
@@ -115,7 +116,7 @@ export function DtFileCheckDialog({ m, feederId, open, onOpenChange, onComplete,
   useEffect(() => {
     if (!rows || !open) return;
     const run = ++runRef.current;
-    setScan(null); setPicked(new Set());
+    setScan(null); setPicked(new Set()); setConfirming(false);
     (async () => {
       const dts = new Set<string>();
       let onDate = 0, withDt = 0;
@@ -246,16 +247,31 @@ export function DtFileCheckDialog({ m, feederId, open, onOpenChange, onComplete,
                 </label>
               ))}
             </div>
-            <div className="flex items-center justify-between gap-2 border-t pt-3">
-              <span className="text-sm font-bold">{chosen.length} selected — only these will be completed</span>
-              <Button disabled={busy || !chosen.length} onClick={() => onComplete(chosen.map((x) => x.dt))}>
-                {busy ? "Saving…" : `✓ Mark ${chosen.length || ""} as complete`}
-              </Button>
-            </div>
+            {confirming ? (
+              <div className="space-y-2 rounded-lg border border-warning bg-warning/15 p-3">
+                <p className="text-sm">
+                  Mark <b>{chosen.length}</b> DT{chosen.length === 1 ? "" : "s"} as completed? Their allocations will be closed
+                  (completion date kept on the record) and the DTs set to <b>Completed</b>. Found DTs are not touched.
+                </p>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button variant="ghost" className="h-10" disabled={busy} onClick={() => setConfirming(false)}>Back</Button>
+                  <Button className="h-10" disabled={busy || !chosen.length} onClick={() => { setConfirming(false); onComplete(chosen.map((x) => x.dt)); }}>
+                    {busy ? "Saving…" : `Yes, complete ${chosen.length}`}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2 border-t pt-3">
+                <span className="text-sm font-bold">{chosen.length} selected — only these will be completed</span>
+                <Button disabled={busy || !chosen.length} onClick={() => setConfirming(true)}>
+                  {busy ? "Saving…" : `✓ Mark ${chosen.length || ""} as complete`}
+                </Button>
+              </div>
+            )}
           </>
         )}
         {scan && !working && scan.onDate > 0 && scan.withDt > 0 && !missing.length && (
-          <p className="rounded border bg-muted/50 p-3 text-sm">Every ongoing DT on {feederName} appears in the file on {short(date)}, so none needs completing.</p>
+          <p className="rounded border bg-muted/50 p-3 text-sm">No ongoing DT on {feederName} is missing from the file on {short(date)} — either every one appears in the file, or the missing ones have just been completed.</p>
         )}
       </DialogContent>
     </Dialog>

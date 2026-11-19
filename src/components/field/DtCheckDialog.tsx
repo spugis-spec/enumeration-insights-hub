@@ -20,6 +20,7 @@ export function DtCheckDialog({ m, feederId, open, onOpenChange, onComplete, bus
   const [q, setQ] = useState("");
   const [withIdle, setWithIdle] = useState(true);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
   const feeder = m.feederById.get(feederId);
   const uploaded = useMemo(() => recentCaptureDates(m, 14, today), [m, today]);
   const chips = useMemo(() => [...new Set([today, ...uploaded, ...days])].sort().reverse().slice(0, 16), [today, uploaded, days]);
@@ -120,12 +121,27 @@ export function DtCheckDialog({ m, feederId, open, onOpenChange, onComplete, bus
               ))}
               {!shown.length && <p className="p-4 text-center text-sm text-muted-foreground">No DT matches your search.</p>}
             </div>
-            <div className="flex items-center justify-between gap-2 border-t pt-3">
-              <span className="text-sm font-bold">{chosen.length} selected</span>
-              <Button disabled={busy || !chosen.length} onClick={() => onComplete(chosen.map((x) => x.dt))}>
-                {busy ? "Saving…" : `✓ Mark ${chosen.length || ""} as complete`}
-              </Button>
-            </div>
+            {confirming ? (
+              <div className="space-y-2 rounded-lg border border-warning bg-warning/15 p-3">
+                <p className="text-sm">
+                  Mark <b>{chosen.length}</b> DT{chosen.length === 1 ? "" : "s"} as completed? Their allocations will be closed
+                  (completion date kept on the record) and the DTs set to <b>Completed</b>.
+                </p>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button variant="ghost" className="h-10" disabled={busy} onClick={() => setConfirming(false)}>Back</Button>
+                  <Button className="h-10" disabled={busy || !chosen.length} onClick={() => { setConfirming(false); onComplete(chosen.map((x) => x.dt)); }}>
+                    {busy ? "Saving…" : `Yes, complete ${chosen.length}`}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2 border-t pt-3">
+                <span className="text-sm font-bold">{chosen.length} selected</span>
+                <Button disabled={busy || !chosen.length} onClick={() => setConfirming(true)}>
+                  {busy ? "Saving…" : `✓ Mark ${chosen.length || ""} as complete`}
+                </Button>
+              </div>
+            )}
           </>
         )}
         {res.days.length > 0 && !res.missing.length && (
