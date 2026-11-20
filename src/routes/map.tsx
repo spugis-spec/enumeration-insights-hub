@@ -9,7 +9,7 @@ import { rowsToPoints, ASSET_LABELS, type AssetType, type GisPoint } from "@/lib
 import { loadDtNames, type DtNames } from "@/lib/dtNames";
 import { listAll } from "@/lib/field/db";
 import type { DT, Feeder } from "@/lib/field/data";
-import { buildKml, coordsFromRows, dtKey, loadDtCoords, saveDtCoords, type DtCoordMap, type DtMapMarker, type UnassignedRow } from "@/lib/dtCoords";
+import { buildKml, coordsFromRows, dtKey, loadDtCoords, loadLookupCoords, saveDtCoords, type DtCoordMap, type DtMapMarker, type UnassignedRow } from "@/lib/dtCoords";
 import * as XLSX from "xlsx";
 
 const GisMap = lazy(() => import("@/components/GisMap"));
@@ -41,8 +41,15 @@ function MapPage() {
   const [names, setNames] = useState<Record<string, string>>({});
   const [dtNames, setDtNames] = useState<DtNames>({});
   useEffect(() => { void loadDtNames().then(setDtNames); }, []);
-  // Unassigned DTs (Field Manager) + their uploaded coordinates.
-  const [dtCoords, setDtCoords] = useState<DtCoordMap>(new Map());
+  // Unassigned DTs (Field Manager) + their coordinates: from the DT Lookup (main source)
+  // merged over any extra coordinates file uploaded on this page (kept on this device).
+  const [deviceCoords, setDeviceCoords] = useState<DtCoordMap>(new Map());
+  const [lookupCoords, setLookupCoords] = useState<DtCoordMap>(new Map());
+  const dtCoords = useMemo<DtCoordMap>(() => {
+    const m = new Map(deviceCoords);
+    lookupCoords.forEach((v, k) => m.set(k, v));
+    return m;
+  }, [deviceCoords, lookupCoords]);
   const [unassigned, setUnassigned] = useState<UnassignedRow[]>([]);
   const [showUnassigned, setShowUnassigned] = useState(true);
   const [dtMsg, setDtMsg] = useState("");
@@ -67,7 +74,7 @@ function MapPage() {
       setDtMsg("Could not load the Field Manager DTs: " + (e?.message ?? e));
     } finally { setDtsBusy(false); }
   };
-  useEffect(() => { void loadDtCoords().then(setDtCoords); }, []);
+  useEffect(() => { void loadDtCoords().then(setDeviceCoords); void loadLookupCoords().then(setLookupCoords); }, []);
   useEffect(() => { if (dtCoords) void loadUnassigned(); }, [dtCoords]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const uploadCoords = async (file: File) => {
@@ -83,11 +90,11 @@ function MapPage() {
       if (e.data.error) return setDtMsg(`Could not read ${file.name}`);
       const { coords, skipped } = coordsFromRows(e.data.rows as Record<string, unknown>[]);
       if (!coords.size) return setDtMsg(`${file.name}: no rows with both a DT ID and coordinates were found. The file needs a DT ID column (or a dss_* column) plus latitude/longitude (or X/Y) columns.`);
-      const merged = new Map(dtCoords);
+      const merged = new Map(deviceCoords);
       coords.forEach((v, k) => merged.set(k, v));
-      setDtCoords(merged);
+      setDeviceCoords(merged);
       void saveDtCoords(merged).catch(() => {});
-      setDtMsg(`Saved ${coords.size.toLocaleString()} DT coordinates from ${file.name}${skipped ? ` (${skipped.toLocaleString()} rows skipped — no DT ID or no coordinates)` : ""}. They stay on this device; upload again anytime to update them.`);
+      setDtMsg(`Saved ${coords.size.toLocaleString()} extra DT coordinates from ${file.name}${skipped ? ` (${skipped.toLocaleString()} rows skipped — no DT ID or no coordinates)` : ""}. They stay on this device; the DT Lookup remains the main source.`);
     };
     w.addEventListener("message", onMsg);
     w.postMessage({ id, buffer }, [buffer]);
@@ -115,7 +122,7 @@ function MapPage() {
     setDtMsg(`Excel exported: ${rows.length.toLocaleString()} unassigned DTs (${unassignedWithCoords.toLocaleString()} with coordinates).`);
   };
   const exportUnassignedKml = () => {
-    if (!unassignedWithCoords) return setDtMsg("No unassigned DT has coordinates yet — upload the DT coordinates file first, then export the KML.");
+    if (!unassignedWithCoords) return setDtMsg("No unassigned DT has coordinates yet — add latitude/longitude columns to your DT Lookup file (or upload an extra coordinates file), then export the KML.");
     const blob = new Blob([buildKml(unassigned)], { type: "application/vnd.google-earth.kml+xml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -280,9 +287,13 @@ function MapPage() {
           <p className="text-xs text-muted-foreground">
             {dtsBusy ? "Loading DTs…" : <><b>{unassigned.length.toLocaleString()}</b> unassigned · <b>{unassignedWithCoords.toLocaleString()}</b> with coordinates · <b>{(unassigned.length - unassignedWithCoords).toLocaleString()}</b> without</>}
           </p>
+          <p className="text-xs text-muted-foreground">
+            Coordinates come from your <b>DT Lookup</b> file (Dashboard → Upload Data Files): add latitude/longitude columns to it and the map picks them up automatically
+            {lookupCoords.size ? <> — <b>{lookupCoords.size.toLocaleString()}</b> loaded from the lookup</> : <> — none found in the lookup yet</>}.
+          </p>
           <label className="flex cursor-pointer items-center justify-between rounded-md border border-dashed px-3 py-2 text-sm hover:bg-accent">
-            <span className="font-medium">DT file with coordinates</span>
-            <span className="font-mono text-xs text-muted-foreground">{coordBusy ? "parsing…" : dtCoords.size ? `${dtCoords.size.toLocaleString()} saved` : "upload"}</span>
+            <span className="font-medium">Extra coordinates file (optional)</span>
+            <span className="font-mono text-xs text-muted-foreground">{coordBusy ? "parsing…" : deviceCoords.size ? `${deviceCoords.size.toLocaleString()} on device` : "upload"}</span>
             <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadCoords(f); e.currentTarget.value = ""; }} />
           </label>
           <div className="flex gap-2">

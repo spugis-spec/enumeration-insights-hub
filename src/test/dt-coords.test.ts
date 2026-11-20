@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildKml, coordsFromRows, dtKey } from "@/lib/dtCoords";
+import { buildKml, coordsFromLookup, coordsFromRows, dtKey } from "@/lib/dtCoords";
 
 describe("dtKey", () => {
   it("normalises DT IDs for matching", () => {
@@ -28,6 +28,24 @@ describe("coordsFromRows", () => {
   it("returns nothing when there are no coordinate columns", () => {
     const { coords } = coordsFromRows([{ "DT ID": "1", feeder: "X" }]);
     expect(coords.size).toBe(0);
+  });
+});
+
+describe("coordsFromLookup", () => {
+  it("reads coordinates saved in the DT lookup, skipping entries without them", () => {
+    const m = coordsFromLookup({
+      a: { id: "501101101101", name: "KATAMPE DSS 1", feeder: "Katampe", lat: 9.0765, lng: 7.3986 },
+      b: { id: "501101101102", name: "NO COORDS", feeder: "Katampe" },
+      c: { id: "501101101103", name: "BAD", feeder: "", lat: 0, lng: 0 },
+      d: { name: "NO ID", lat: 9.1, lng: 7.4 },
+    });
+    expect(m.size).toBe(1);
+    expect(m.get("501101101101")).toEqual({ lat: 9.0765, lng: 7.3986 });
+  });
+
+  it("handles null and non-objects", () => {
+    expect(coordsFromLookup(null).size).toBe(0);
+    expect(coordsFromLookup("x").size).toBe(0);
   });
 });
 
