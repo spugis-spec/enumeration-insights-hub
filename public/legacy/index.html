@@ -847,7 +847,7 @@
                             <div class="upload-zone rounded-lg p-4 text-center cursor-pointer" id="zone-cust" onclick="document.getElementById('file-cust').click()"><button type="button" class="clear-upload-btn" title="Clear file" onclick="event.stopPropagation(); clearUploadZone('cust');">✕</button><input type="file" id="file-cust" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleFileUpload(this, 'cust')"><div class="text-3xl mb-2">👥</div><div class="font-medium text-gray-700">Customer Enumeration</div><div class="text-sm text-gray-500" id="status-cust">Click or drag to upload</div></div>
                             <div class="upload-zone rounded-lg p-4 text-center cursor-pointer md:col-span-2" id="zone-issues" onclick="document.getElementById('file-issues').click()"><button type="button" class="clear-upload-btn" title="Clear file" onclick="event.stopPropagation(); clearUploadZone('issues');">✕</button><input type="file" id="file-issues" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleFileUpload(this, 'issues')"><div class="text-3xl mb-2">⚠️</div><div class="font-medium text-gray-700">Issue Log</div><div class="text-sm text-gray-500" id="status-issues">Click or drag to upload</div></div>
                             <div class="upload-zone rounded-lg p-4 text-center cursor-pointer md:col-span-2" id="zone-feeder-lookup" onclick="document.getElementById('file-feeder-lookup').click()"><button type="button" class="clear-upload-btn" title="Clear file" onclick="event.stopPropagation(); clearFeederLookupZone();">✕</button><button type="button" title="Download saved feeder lookup" onclick="event.stopPropagation(); downloadFeederLookup();" style="position:absolute;top:6px;right:34px;width:22px;height:22px;border-radius:50%;background:rgba(37,99,235,0.1);color:#2563eb;border:1px solid rgba(37,99,235,0.3);font-size:12px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5;">⬇</button><input type="file" id="file-feeder-lookup" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleFeederLookupUpload(this)"><div class="text-3xl mb-2">⚡</div><div class="font-medium text-gray-700">Feeder Lookup (Code → Name)</div><div class="text-sm text-gray-500" id="status-feeder-lookup">Upload feeder code lookup table (code, feeder_name) — use ⬇ above to download what's saved</div></div>
-                            <div class="upload-zone rounded-lg p-4 text-center cursor-pointer md:col-span-2" id="zone-dt-lookup" onclick="document.getElementById('file-dt-lookup').click()"><button type="button" class="clear-upload-btn" title="Clear DT lookup" onclick="event.stopPropagation(); clearDtLookupZone();">✕</button><button type="button" title="Download saved DT lookup" onclick="event.stopPropagation(); downloadDtLookup();" style="position:absolute;top:6px;right:34px;width:22px;height:22px;border-radius:50%;background:rgba(124,58,237,0.1);color:#7c3aed;border:1px solid rgba(124,58,237,0.3);font-size:12px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5;">⬇</button><input type="file" id="file-dt-lookup" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleDtLookupUpload(this)"><div class="text-3xl mb-2">🔌</div><div class="font-medium text-gray-700">DT Lookup (DT ID → DT Name)</div><div class="text-sm text-gray-500" id="status-dt-lookup">Upload DT lookup (DT ID, DT name, optional feeder) — updates are merged into what is saved</div></div>
+                            <div class="upload-zone rounded-lg p-4 text-center cursor-pointer md:col-span-2" id="zone-dt-lookup" onclick="document.getElementById('file-dt-lookup').click()"><button type="button" class="clear-upload-btn" title="Clear DT lookup" onclick="event.stopPropagation(); clearDtLookupZone();">✕</button><button type="button" title="Download saved DT lookup" onclick="event.stopPropagation(); downloadDtLookup();" style="position:absolute;top:6px;right:34px;width:22px;height:22px;border-radius:50%;background:rgba(124,58,237,0.1);color:#7c3aed;border:1px solid rgba(124,58,237,0.3);font-size:12px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5;">⬇</button><input type="file" id="file-dt-lookup" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleDtLookupUpload(this)"><div class="text-3xl mb-2">🔌</div><div class="font-medium text-gray-700">DT Lookup (DT ID → DT Name)</div><div class="text-sm text-gray-500" id="status-dt-lookup">Upload DT lookup (DT ID, DT name, optional feeder, latitude, longitude) — updates are merged into what is saved</div></div>
                         </div>
                         <div id="mfHost" style="display:none"></div>
                     </div>
@@ -9619,7 +9619,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function findKey(keys, tests){ for(var i=0;i<tests.length;i++){ for(var j=0;j<keys.length;j++){ if(tests[i].test(String(keys[j]).trim())) return keys[j]; } } return null; }
   function toDk(v){ if(!v) return ''; var d=(v instanceof Date)?v:new Date(String(v)); if(isNaN(d.getTime())) return ''; return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   var gisDtMap={}, gisDtArr=[];
-  function compact(rows){
+  function compact(rows, from, to){
     if(!Array.isArray(rows)||!rows.length) return [];
     var keys=Object.keys(rows[0]);
     var la=findKey(keys,[/^lat(itude)?$/i,/latitude/i,/^y$/i,/^_?y$/i,/gps.*lat/i,/lat/i]);
@@ -9643,15 +9643,21 @@ document.addEventListener('DOMContentLoaded', () => {
     rows.forEach(function(r){
       var lat=Number(r[la]), lng=Number(r[lo]);
       if(!isFinite(lat)||!isFinite(lng)||!lat||!lng||Math.abs(lat)>90||Math.abs(lng)>180) return;
+      var rdk=dt?toDk(r[dt]):'';
+      // Only the generated dashboard's own dates go to the map: when the file has a date
+      // column, rows outside the report's date range are left out of the spool.
+      if(dt && from && (rdk<from || rdk>to)) return;
       var f=fe? String(r[fe]||'').trim():''; try{ if(f && feederLookup && feederLookup[f]) f=feederLookup[f]; }catch(e){}
-      out.push([Math.round(lat*1e6)/1e6, Math.round(lng*1e6)/1e6, us?String(r[us]||'').trim():'', f, dt?toDk(r[dt]):'', fi?String(r[fi]||''):'', bk?String(r[bk]==null?'':r[bk]).trim():'', dtIdx(r)]);
+      out.push([Math.round(lat*1e6)/1e6, Math.round(lng*1e6)/1e6, us?String(r[us]||'').trim():'', f, rdk, fi?String(r[fi]||''):'', bk?String(r[bk]==null?'':r[bk]).trim():'', dtIdx(r)]);
     });
     return out;
   }
   function buildPayload(){
     if(typeof uploadedData!=='object'||!uploadedData) return null;
     gisDtMap={}; gisDtArr=[];
-    var p={ dss:compact(uploadedData.dss), ht:compact(uploadedData.ht), lt:compact(uploadedData.lt), cust:compact(uploadedData.cust) };
+    var from=(typeof reportResults!=='undefined' && reportResults && reportResults.dateKey) || '';
+    var to=(typeof reportResults!=='undefined' && reportResults && reportResults.endDateKey) || from;
+    var p={ dss:compact(uploadedData.dss, from, to), ht:compact(uploadedData.ht, from, to), lt:compact(uploadedData.lt, from, to), cust:compact(uploadedData.cust, from, to) };
     var n=p.dss.length+p.ht.length+p.lt.length+p.cust.length;
     return n? { points:p, count:n, savedAt:Date.now(), dts:gisDtArr } : null;
   }
@@ -9860,14 +9866,15 @@ function ccDtName(id) {
 /* ---- DT lookup: upload / save / download / clear ---- */
 function ccStatus() {
   const n = Object.keys(dtLookup).length, st = document.getElementById('status-dt-lookup'), z = document.getElementById('zone-dt-lookup');
-  if (st) st.innerHTML = n ? `<span class="text-green-600">✓ ${n} DT names loaded</span>` : 'Upload DT lookup (DT ID, DT name, optional feeder) — updates are merged into what is saved';
+  const m = Object.values(dtLookup).filter(v => v.lat != null && v.lng != null).length;
+  if (st) st.innerHTML = n ? `<span class="text-green-600">✓ ${n} DT names loaded${m ? ` · ${m} with coordinates (used by the GIS Map)` : ''}</span>` : 'Upload DT lookup (DT ID, DT name, optional feeder, latitude, longitude) — updates are merged into what is saved';
   if (z) z.classList.toggle('has-file', n > 0);
 }
 function ccSaveDt() {
   try { localStorage.setItem('eih_dtLookup', JSON.stringify(dtLookup)); } catch (e) {}
   if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && typeof currentUser !== 'undefined' && currentUser) {
     const o = {};
-    Object.values(dtLookup).forEach(v => { o[v.id.replace(/[.#$\[\]\/]/g, '_')] = { id: v.id, name: v.name, feeder: v.feeder || '' }; });
+    Object.values(dtLookup).forEach(v => { const rec = { id: v.id, name: v.name, feeder: v.feeder || '' }; if (v.lat != null && v.lng != null) { rec.lat = v.lat; rec.lng = v.lng; } o[v.id.replace(/[.#$\[\]\/]/g, '_')] = rec; });
     database.ref('dtLookup').set(o).catch(e => console.error('DT lookup save', e));
   }
 }
@@ -9875,7 +9882,7 @@ async function ccLoadDtCloud() {
   try {
     if (typeof firebaseInitialized === 'undefined' || !firebaseInitialized) return;
     const o = (await database.ref('dtLookup').once('value')).val();
-    if (o) { Object.values(o).forEach(v => { if (v && v.id) dtLookup[ccKey(v.id).toLowerCase()] = { id: v.id, name: v.name, feeder: v.feeder || '' }; }); ccStatus(); ccRefresh(); }
+    if (o) { Object.values(o).forEach(v => { if (v && v.id) { const e = { id: v.id, name: v.name, feeder: v.feeder || '' }; if (isFinite(Number(v.lat)) && isFinite(Number(v.lng)) && Number(v.lat) !== 0 && Number(v.lng) !== 0) { e.lat = Number(v.lat); e.lng = Number(v.lng); } dtLookup[ccKey(v.id).toLowerCase()] = e; } }); ccStatus(); ccRefresh(); }
   } catch (e) { console.error('DT lookup load', e); }
 }
 function handleDtLookupUpload(input) {
@@ -9892,22 +9899,28 @@ function handleDtLookupUpload(input) {
       const feC = cols.find(c => ccNorm(c).includes('feeder'));
       const nmC = cols.find(c => c !== idC && c !== feC && /name|desc|^dt$|^dss$/.test(ccNorm(c))) || cols.find(c => c !== idC && c !== feC);
       if (!nmC) throw new Error('Could not find a DT name column');
-      let n = 0;
+      const laC = cols.find(c => /^(lat|latitude|y)$/.test(ccNorm(c))) || cols.find(c => ccNorm(c).includes('latitude')) || cols.find(c => ccNorm(c).includes('lat'));
+      const loC = cols.find(c => /^(lng|lon|long|longitude|x)$/.test(ccNorm(c))) || cols.find(c => ccNorm(c).includes('longitude')) || cols.find(c => ccNorm(c).includes('lon'));
+      let n = 0, nc = 0;
       rows.forEach(r => {
         const id = ccKey(r[idC]), name = ccKey(r[nmC]); if (!id || !name) return;
         const f = feC ? ccKey(r[feC]) : '';
-        dtLookup[id.toLowerCase()] = { id, name, feeder: (typeof feederLookup !== 'undefined' && feederLookup[f]) || f };
+        const entry = { id, name, feeder: (typeof feederLookup !== 'undefined' && feederLookup[f]) || f };
+        const la = laC ? Number(r[laC]) : NaN, lo = loC ? Number(r[loC]) : NaN;
+        if (isFinite(la) && isFinite(lo) && la !== 0 && lo !== 0 && Math.abs(la) <= 90 && Math.abs(lo) <= 180) { entry.lat = la; entry.lng = lo; nc++; }
+        else { const prev = dtLookup[id.toLowerCase()]; if (prev && prev.lat != null && prev.lng != null) { entry.lat = prev.lat; entry.lng = prev.lng; } }
+        dtLookup[id.toLowerCase()] = entry;
         n++;
       });
       input.value = ''; ccStatus(); ccSaveDt(); ccRefresh();
-      showStatus(`DT lookup updated: ${n} rows read, ${Object.keys(dtLookup).length} DT names saved`, 'success');
+      showStatus(`DT lookup updated: ${n} rows read, ${Object.keys(dtLookup).length} DT names saved${laC && loC ? `, ${nc} with coordinates` : ''}`, 'success');
     } catch (err) { st.textContent = 'Error loading file'; showStatus('Error: ' + err.message, 'error'); }
   };
   rd.readAsArrayBuffer(file);
 }
 function downloadDtLookup() {
   const v = Object.values(dtLookup); if (!v.length) { showStatus('No DT lookup saved yet', 'warning'); return; }
-  const ws = XLSX.utils.aoa_to_sheet([['dt_id', 'dt_name', 'feeder'], ...v.sort((a, b) => a.id.localeCompare(b.id)).map(x => [x.id, x.name, x.feeder || ''])]);
+  const ws = XLSX.utils.aoa_to_sheet([['dt_id', 'dt_name', 'feeder', 'latitude', 'longitude'], ...v.sort((a, b) => a.id.localeCompare(b.id)).map(x => [x.id, x.name, x.feeder || '', x.lat != null ? x.lat : '', x.lng != null ? x.lng : ''])]);
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'DT Lookup'); XLSX.writeFile(wb, 'dt_lookup.xlsx');
 }
 function clearDtLookupZone() {
