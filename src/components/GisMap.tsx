@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { convexHull, ASSET_LABELS, type GisPoint } from "@/lib/gis";
 import { dtNameOf, type DtNames } from "@/lib/dtNames";
+import type { DtMapMarker } from "@/lib/dtCoords";
 
 const COLORS: Record<string, string> = {
   dss: "var(--chart-1)",
@@ -18,7 +19,7 @@ function resolve(cssVar: string) {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-export default function GisMap({ points, showBoundaries, dtNames = {} }: { points: GisPoint[]; showBoundaries: boolean; dtNames?: DtNames }) {
+export default function GisMap({ points, showBoundaries, dtNames = {}, dtMarkers = [] }: { points: GisPoint[]; showBoundaries: boolean; dtNames?: DtNames; dtMarkers?: DtMapMarker[] }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
@@ -85,11 +86,33 @@ export default function GisMap({ points, showBoundaries, dtNames = {} }: { point
         .addTo(g);
     });
 
-    if (points.length) {
-      const b = L.latLngBounds(points.map((p) => [p.lat, p.lng] as [number, number]));
+    dtMarkers.forEach((d) => {
+      L.circleMarker([d.lat, d.lng], {
+        renderer,
+        radius: 7,
+        color: "#92400e",
+        fillColor: "#f59e0b",
+        fillOpacity: 0.95,
+        weight: 2,
+      })
+        .bindPopup(
+          `<div style="font-family:inherit;min-width:180px">
+            <strong>Unassigned DT</strong><br/>
+            <b>DT Name:</b> ${esc(d.dtName || "—")}<br/>
+            <b>DT ID:</b> ${esc(d.dtId)}<br/>
+            <b>Feeder:</b> ${esc(d.feederName || "—")}<br/>
+            <b>Location:</b> ${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}
+          </div>`,
+        )
+        .addTo(g);
+    });
+
+    const allPts: [number, number][] = points.map((p) => [p.lat, p.lng] as [number, number]).concat(dtMarkers.map((d) => [d.lat, d.lng] as [number, number]));
+    if (allPts.length) {
+      const b = L.latLngBounds(allPts);
       m.fitBounds(b, { padding: [30, 30], maxZoom: 16 });
     }
-  }, [points, showBoundaries, dtNames]);
+  }, [points, showBoundaries, dtNames, dtMarkers]);
 
   return <div ref={el} className="h-full w-full rounded-lg" />;
 }

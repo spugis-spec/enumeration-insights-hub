@@ -7,6 +7,10 @@ import { listSpoolDates, loadSpool } from "@/lib/gisSpool";
 import { SHARED_KEYS } from "@/lib/shared";
 import { rowsToPoints, ASSET_LABELS, type AssetType, type GisPoint } from "@/lib/gis";
 import { loadDtNames, type DtNames } from "@/lib/dtNames";
+import { listAll } from "@/lib/field/db";
+import type { DT, Feeder } from "@/lib/field/data";
+import { buildKml, coordsFromRows, dtKey, loadDtCoords, saveDtCoords, type DtCoordMap, type DtMapMarker, type UnassignedRow } from "@/lib/dtCoords";
+import * as XLSX from "xlsx";
 
 const GisMap = lazy(() => import("@/components/GisMap"));
 
@@ -37,6 +41,89 @@ function MapPage() {
   const [names, setNames] = useState<Record<string, string>>({});
   const [dtNames, setDtNames] = useState<DtNames>({});
   useEffect(() => { void loadDtNames().then(setDtNames); }, []);
+  // Unassigned DTs (Field Manager) + their uploaded coordinates.
+  const [dtCoords, setDtCoords] = useState<DtCoordMap>(new Map());
+  const [unassigned, setUnassigned] = useState<UnassignedRow[]>([]);
+  const [showUnassigned, setShowUnassigned] = useState(true);
+  const [dtMsg, setDtMsg] = useState("");
+  const [coordBusy, setCoordBusy] = useState(false);
+  const [dtsBusy, setDtsBusy] = useState(false);
+
+  const loadUnassigned = async () => {
+    setDtsBusy(true);
+    try {
+      const [dts, feeders] = await Promise.all([listAll<DT>("dts"), listAll<Feeder>("feeders")]);
+      const fname = new Map(feeders.map((f) => [f.feeder_id, f.feeder_name]));
+      setUnassigned(
+        dts
+          .filter((d) => d.status === "unassigned")
+          .map((d) => {
+            const c = dtCoords.get(dtKey(d.dt_id));
+            return { dt_id: d.dt_id, dt_name: d.dt_name ?? "", feeder_id: d.feeder_id, feeder_name: fname.get(d.feeder_id) ?? "", lat: c?.lat ?? null, lng: c?.lng ?? null };
+          })
+          .sort((a, b) => (a.dt_name || a.dt_id).localeCompare(b.dt_name || b.dt_id)),
+      );
+    } catch (e: any) {
+      setDtMsg("Could not load the Field Manager DTs: " + (e?.message ?? e));
+    } finally { setDtsBusy(false); }
+  };
+  useEffect(() => { void loadDtCoords().then(setDtCoords); }, []);
+  useEffect(() => { if (dtCoords) void loadUnassigned(); }, [dtCoords]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const uploadCoords = async (file: File) => {
+    if (!worker.current) worker.current = new Worker(new URL("../lib/parse.worker.ts", import.meta.url), { type: "module" });
+    setCoordBusy(true);
+    const buffer = await file.arrayBuffer();
+    const id = `coords-${Date.now()}`;
+    const w = worker.current;
+    const onMsg = (e: MessageEvent) => {
+      if (e.data.id !== id) return;
+      w.removeEventListener("message", onMsg);
+      setCoordBusy(false);
+      if (e.data.error) return setDtMsg(`Could not read ${file.name}`);
+      const { coords, skipped } = coordsFromRows(e.data.rows as Record<string, unknown>[]);
+      if (!coords.size) return setDtMsg(`${file.name}: no rows with both a DT ID and coordinates were found. The file needs a DT ID column (or a dss_* column) plus latitude/longitude (or X/Y) columns.`);
+      const merged = new Map(dtCoords);
+      coords.forEach((v, k) => merged.set(k, v));
+      setDtCoords(merged);
+      void saveDtCoords(merged).catch(() => {});
+      setDtMsg(`Saved ${coords.size.toLocaleString()} DT coordinates from ${file.name}${skipped ? ` (${skipped.toLocaleString()} rows skipped — no DT ID or no coordinates)` : ""}. They stay on this device; upload again anytime to update them.`);
+    };
+    w.addEventListener("message", onMsg);
+    w.postMessage({ id, buffer }, [buffer]);
+  };
+
+  const dtMarkers = useMemo<DtMapMarker[]>(
+    () =>
+      showUnassigned
+        ? unassigned
+            .filter((r) => r.lat != null && r.lng != null && (!feeder || r.feeder_name === feeder))
+            .map((r) => ({ lat: r.lat!, lng: r.lng!, dtId: r.dt_id, dtName: r.dt_name, feederName: r.feeder_name }))
+        : [],
+    [unassigned, showUnassigned, feeder],
+  );
+  const unassignedWithCoords = unassigned.filter((r) => r.lat != null).length;
+
+  const exportUnassignedExcel = () => {
+    const rows = unassigned.map((r, i) => ({
+      "S/N": i + 1, "DT ID": r.dt_id, "DT Name": r.dt_name, "Feeder": r.feeder_name || r.feeder_id,
+      "Status": "Unassigned", "Latitude": r.lat ?? "", "Longitude": r.lng ?? "",
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Unassigned DTs");
+    XLSX.writeFile(wb, "Unassigned_DTs.xlsx");
+    setDtMsg(`Excel exported: ${rows.length.toLocaleString()} unassigned DTs (${unassignedWithCoords.toLocaleString()} with coordinates).`);
+  };
+  const exportUnassignedKml = () => {
+    if (!unassignedWithCoords) return setDtMsg("No unassigned DT has coordinates yet — upload the DT coordinates file first, then export the KML.");
+    const blob = new Blob([buildKml(unassigned)], { type: "application/vnd.google-earth.kml+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "Unassigned_DTs.kml";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setDtMsg(`KML exported: ${unassignedWithCoords.toLocaleString()} unassigned DTs with coordinates.`);
+  };
   const worker = useRef<Worker | null>(null);
   const [spoolDates, setSpoolDates] = useState<{ date: string; count: number; where: string }[]>([]);
   const [spoolDate, setSpoolDate] = useState("");
@@ -183,6 +270,29 @@ function MapPage() {
           <button className="text-xs text-primary underline" onClick={() => { setFeeder(""); setUser(""); setFrom(""); setTo(""); }}>Reset filters</button>
         </section>
 
+        <section className="space-y-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Unassigned DTs</h2>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={showUnassigned} onChange={(e) => setShowUnassigned(e.target.checked)} />
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: "#f59e0b" }} />
+            Show unassigned DTs on the map
+          </label>
+          <p className="text-xs text-muted-foreground">
+            {dtsBusy ? "Loading DTs…" : <><b>{unassigned.length.toLocaleString()}</b> unassigned · <b>{unassignedWithCoords.toLocaleString()}</b> with coordinates · <b>{(unassigned.length - unassignedWithCoords).toLocaleString()}</b> without</>}
+          </p>
+          <label className="flex cursor-pointer items-center justify-between rounded-md border border-dashed px-3 py-2 text-sm hover:bg-accent">
+            <span className="font-medium">DT file with coordinates</span>
+            <span className="font-mono text-xs text-muted-foreground">{coordBusy ? "parsing…" : dtCoords.size ? `${dtCoords.size.toLocaleString()} saved` : "upload"}</span>
+            <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadCoords(f); e.currentTarget.value = ""; }} />
+          </label>
+          <div className="flex gap-2">
+            <button className="flex-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60" disabled={!unassigned.length} onClick={exportUnassignedExcel}>Export Excel</button>
+            <button className="flex-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60" disabled={!unassigned.length} onClick={exportUnassignedKml}>Export KML</button>
+            <button className="rounded-md border px-3 py-1.5 text-sm disabled:opacity-60" disabled={dtsBusy} onClick={() => void loadUnassigned()}>↻</button>
+          </div>
+          {dtMsg && <p className="text-xs text-muted-foreground">{dtMsg}</p>}
+        </section>
+
         <section>
           <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Showing</h2>
           <div className="grid grid-cols-2 gap-2">
@@ -192,16 +302,20 @@ function MapPage() {
                 <div className="font-mono text-lg font-bold">{n.toLocaleString()}</div>
               </div>
             ))}
+            <div className="rounded-md bg-secondary p-2">
+              <div className="text-xs text-muted-foreground">Unassigned DTs</div>
+              <div className="font-mono text-lg font-bold">{dtMarkers.length.toLocaleString()}</div>
+            </div>
           </div>
         </section>
       </aside>
       <div className="relative p-2">
         <ClientOnly fallback={<div className="h-full animate-pulse rounded-lg bg-muted" />}>
           <Suspense fallback={<div className="h-full animate-pulse rounded-lg bg-muted" />}>
-            <GisMap points={filtered} showBoundaries={boundaries} dtNames={dtNames} />
+            <GisMap points={filtered} showBoundaries={boundaries} dtNames={dtNames} dtMarkers={dtMarkers} />
           </Suspense>
         </ClientOnly>
-        {!all.length && (
+        {!all.length && !dtMarkers.length && (
           <div className="pointer-events-none absolute inset-0 z-[500] grid place-items-center">
             <div className="rounded-lg bg-card/95 px-5 py-3 text-sm shadow">Pick a dashboard date above, or upload DSS, HT, LT or Customer files with latitude/longitude columns.</div>
           </div>
