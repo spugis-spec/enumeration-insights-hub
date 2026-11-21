@@ -3,9 +3,10 @@
  * The processing, folder export and file formats are the same as the standalone MergeFeeders_FINAL2.html.
  * Added: step 5 attaches the processed data to the Upload Data Files boxes (it detects DT / HT Pole /
  * LT Pole / Customer Enumeration / Issue Log) and can generate the report for a chosen date.
- * Added: an Auto-run card that chains the whole flow in one click (load zips, __created as the
- * date/time source, process + export to the remembered/default folder, attach, then generate the
- * report for one chosen date). The manual steps are unchanged.
+ * Added: an Auto-run card that chains the whole flow in one click (load zips, the Date/Time
+ * source picked in the card — __created, time or __modified — process + export to the
+ * remembered/default folder, attach, then generate the report for one chosen date).
+ * The manual steps are unchanged.
  * Runs entirely in the browser. Its libraries (JSZip, PapaParse) are served from this folder, not a CDN.
  */
 (function () {
@@ -45,9 +46,10 @@
     'pick your date/time column, export streamlined files, then attach them straight to the upload boxes above.</p>' +
 
     '<div class="mf-card" id="mf-autoCard"><h2>⚡ Auto-run (one click)</h2>' +
-    '<p class="mf-hint">Drop all the zips here, pick the <b>report date</b>, and press Auto-run: the tool loads and inspects the files, uses <code>__created</code> as the date/time source, processes and exports them (to the folder chosen in Step 4 below — your last used folder is remembered — or to your normal Downloads folder), attaches them to the Upload Data Files boxes, and generates the report for that date alone. Keep this tab open while it runs. Prefer to do it yourself? The manual steps 1–5 below work exactly as before.</p>' +
+    '<p class="mf-hint">Drop all the zips here, pick the <b>report date</b> and the <b>Date/Time source</b>, and press Auto-run: the tool loads and inspects the files, uses the source you picked as each file\'s date/time column (a file that does not have that column keeps its own default), processes and exports them (to the folder chosen in Step 4 below — your last used folder is remembered — or to your normal Downloads folder), attaches them to the Upload Data Files boxes, and generates the report for that date alone. Keep this tab open while it runs. Prefer to do it yourself? The manual steps 1–5 below work exactly as before.</p>' +
     '<div class="mf-kv"><div><label class="mf-small">All zip files</label><input type="file" id="mf-autoZips" accept=".zip" multiple></div>' +
-    '<div><label class="mf-small">Report date</label><input type="date" id="mf-autoDate"></div></div>' +
+    '<div><label class="mf-small">Report date</label><input type="date" id="mf-autoDate"></div>' +
+    '<div><label class="mf-small">Date/Time source</label><select id="mf-autoSource"><option value="__created" selected>__created</option><option value="time">time</option><option value="__modified">__modified</option></select></div></div>' +
     '<div class="mf-btn-row"><button id="mf-autoBtn">⚡ Auto-run everything</button><span id="mf-autoStatus" class="mf-muted"></span></div></div>' +
 
     '<div class="mf-card"><h2><span class="mf-step">1</span> Upload zip file(s)</h2>' +
@@ -659,7 +661,7 @@
       return true;
     }
 
-    // ---------- Auto-run: load → __created → process + export → attach → report ----------
+    // ---------- Auto-run: load → chosen date/time source → process + export → attach → report ----------
     var autoBtn = $('#mf-autoBtn'), autoStatus = $('#mf-autoStatus');
     autoBtn.addEventListener('click', async function () {
       var files = $('#mf-autoZips').files;
@@ -671,8 +673,10 @@
         autoStatus.textContent = '1/4 Loading and inspecting ' + files.length + ' zip(s)…';
         var n = await loadZips(files);
         if (!n) { autoStatus.textContent = 'No usable files were found in those zips.'; return; }
-        // Auto-run always uses __created as the date/time source where a file has it.
-        loadedFiles.forEach(function (f) { if (f.dateOptions.indexOf('__created') >= 0) f.selectedDate = '__created'; });
+        // Auto-run uses the Date/Time source picked in the card where a file has that
+        // column; a file without it keeps its own default (Step 2 shows the result).
+        var source = ($('#mf-autoSource') && $('#mf-autoSource').value) || '__created';
+        loadedFiles.forEach(function (f) { if (f.dateOptions.indexOf(source) >= 0) f.selectedDate = source; });
         renderFilesTable();
         // Export everything (no date filtering in Step 4); the report picks the one date.
         $('#mf-dateFrom').value = ''; $('#mf-dateTo').value = '';

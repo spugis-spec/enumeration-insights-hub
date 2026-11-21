@@ -5004,7 +5004,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="${clone.classList.contains('cc-on') ? 'width=device-width, initial-scale=1' : 'width=1280, initial-scale=0.25, minimum-scale=0.1, maximum-scale=5.0, user-scalable=yes'}">
+  <meta name="viewport" content="width=1280, initial-scale=0.25, minimum-scale=0.1, maximum-scale=5.0, user-scalable=yes">
   <title>${escapeHtml(pageTitle)}</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <style>${liveCSS || fallbackCSS}</style>
@@ -8732,7 +8732,7 @@ function exportWeeklyReportHTML() {
     const exempt = weeklyPerfRows.filter(r => r.exempt).length;
     const below = weeklyPerfRows.filter(r => !r.exempt && !r.met && !r.notAssessed).length;
     const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=1280, initial-scale=0.25, minimum-scale=0.1, maximum-scale=5.0, user-scalable=yes">
 <title>Weekly Performance vs Target (${m.startStr} to ${m.endStr})</title>
 <style>
 body{font-family:'DM Sans',Segoe UI,Arial,sans-serif;background:#f0f4f8;color:#0f172a;margin:0;padding:18px;}
