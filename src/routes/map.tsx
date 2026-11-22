@@ -15,6 +15,10 @@ import * as XLSX from "xlsx";
 const GisMap = lazy(() => import("@/components/GisMap"));
 
 export const Route = createFileRoute("/map")({
+  validateSearch: (s: Record<string, unknown>): { view?: string; feeder?: string } => ({
+    ...(typeof s["view"] === "string" ? { view: s["view"] } : {}),
+    ...(typeof s["feeder"] === "string" ? { feeder: s["feeder"] } : {}),
+  }),
   head: () => ({
     meta: [
       { title: "GIS Map — AEDC Enumeration" },
@@ -29,6 +33,9 @@ export const Route = createFileRoute("/map")({
 const TYPES: AssetType[] = ["dss", "ht", "lt", "cust"];
 
 function MapPage() {
+  const search = Route.useSearch();
+  // The map shows either the enumeration data or the unassigned DTs — never both at once.
+  const [view, setView] = useState<"data" | "unassigned">(search.view === "unassigned" ? "unassigned" : "data");
   const [points, setPoints] = useState<Record<AssetType, GisPoint[]>>({ dss: [], ht: [], lt: [], cust: [] });
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [msg, setMsg] = useState("");
@@ -45,37 +52,38 @@ function MapPage() {
   // merged over any extra coordinates file uploaded on this page (kept on this device).
   const [deviceCoords, setDeviceCoords] = useState<DtCoordMap>(new Map());
   const [lookupCoords, setLookupCoords] = useState<DtCoordMap>(new Map());
-  const dtCoords = useMemo<DtCoordMap>(() => {
-    const m = new Map(deviceCoords);
-    lookupCoords.forEach((v, k) => m.set(k, v));
-    return m;
-  }, [deviceCoords, lookupCoords]);
   const [unassigned, setUnassigned] = useState<UnassignedRow[]>([]);
-  const [showUnassigned, setShowUnassigned] = useState(true);
+  const [uaFeeder, setUaFeeder] = useState(search.feeder ?? ""); // feeder NAME; "" = all feeders
+  const [feederNames, setFeederNames] = useState<string[]>([]);
   const [dtMsg, setDtMsg] = useState("");
   const [coordBusy, setCoordBusy] = useState(false);
   const [dtsBusy, setDtsBusy] = useState(false);
 
-  const loadUnassigned = async () => {
+  /** One check: re-read the coordinates (device file + DT Lookup) and rebuild the unassigned list from the Field Manager. */
+  const checkUnassigned = async () => {
     setDtsBusy(true);
     try {
+      const [dev, look] = await Promise.all([loadDtCoords(), loadLookupCoords()]);
+      setDeviceCoords(dev);
+      setLookupCoords(look);
+      const merged = new Map(dev);
+      look.forEach((v, k) => merged.set(k, v)); // the DT Lookup wins
       const [dts, feeders] = await Promise.all([listAll<DT>("dts"), listAll<Feeder>("feeders")]);
       const fname = new Map(feeders.map((f) => [f.feeder_id, f.feeder_name]));
-      setUnassigned(
-        dts
-          .filter((d) => d.status === "unassigned")
-          .map((d) => {
-            const c = dtCoords.get(dtKey(d.dt_id));
-            return { dt_id: d.dt_id, dt_name: d.dt_name ?? "", feeder_id: d.feeder_id, feeder_name: fname.get(d.feeder_id) ?? "", lat: c?.lat ?? null, lng: c?.lng ?? null };
-          })
-          .sort((a, b) => (a.dt_name || a.dt_id).localeCompare(b.dt_name || b.dt_id)),
-      );
+      const rows = dts
+        .filter((d) => d.status === "unassigned")
+        .map((d) => {
+          const c = merged.get(dtKey(d.dt_id));
+          return { dt_id: d.dt_id, dt_name: d.dt_name ?? "", feeder_id: d.feeder_id, feeder_name: fname.get(d.feeder_id) ?? "", lat: c?.lat ?? null, lng: c?.lng ?? null };
+        })
+        .sort((a, b) => (a.dt_name || a.dt_id).localeCompare(b.dt_name || b.dt_id));
+      setUnassigned(rows);
+      setFeederNames([...new Set([...feeders.map((f) => f.feeder_name), ...rows.map((r) => r.feeder_name)].filter(Boolean))].sort());
     } catch (e: any) {
       setDtMsg("Could not load the Field Manager DTs: " + (e?.message ?? e));
     } finally { setDtsBusy(false); }
   };
-  useEffect(() => { void loadDtCoords().then(setDeviceCoords); void loadLookupCoords().then(setLookupCoords); }, []);
-  useEffect(() => { if (dtCoords) void loadUnassigned(); }, [dtCoords]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void checkUnassigned(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const uploadCoords = async (file: File) => {
     if (!worker.current) worker.current = new Worker(new URL("../lib/parse.worker.ts", import.meta.url), { type: "module" });
@@ -93,37 +101,38 @@ function MapPage() {
       const merged = new Map(deviceCoords);
       coords.forEach((v, k) => merged.set(k, v));
       setDeviceCoords(merged);
-      void saveDtCoords(merged).catch(() => {});
+      void saveDtCoords(merged).catch(() => {}).then(() => checkUnassigned());
       setDtMsg(`Saved ${coords.size.toLocaleString()} extra DT coordinates from ${file.name}${skipped ? ` (${skipped.toLocaleString()} rows skipped — no DT ID or no coordinates)` : ""}. They stay on this device; the DT Lookup remains the main source.`);
     };
     w.addEventListener("message", onMsg);
     w.postMessage({ id, buffer }, [buffer]);
   };
 
+  const uaScoped = useMemo(() => (uaFeeder ? unassigned.filter((r) => r.feeder_name === uaFeeder) : unassigned), [unassigned, uaFeeder]);
   const dtMarkers = useMemo<DtMapMarker[]>(
     () =>
-      showUnassigned
-        ? unassigned
-            .filter((r) => r.lat != null && r.lng != null && (!feeder || r.feeder_name === feeder))
+      view === "unassigned"
+        ? uaScoped
+            .filter((r) => r.lat != null && r.lng != null)
             .map((r) => ({ lat: r.lat!, lng: r.lng!, dtId: r.dt_id, dtName: r.dt_name, feederName: r.feeder_name }))
         : [],
-    [unassigned, showUnassigned, feeder],
+    [uaScoped, view],
   );
-  const unassignedWithCoords = unassigned.filter((r) => r.lat != null).length;
+  const unassignedWithCoords = uaScoped.filter((r) => r.lat != null).length;
 
   const exportUnassignedExcel = () => {
-    const rows = unassigned.map((r, i) => ({
+    const rows = uaScoped.map((r, i) => ({
       "S/N": i + 1, "DT ID": r.dt_id, "DT Name": r.dt_name, "Feeder": r.feeder_name || r.feeder_id,
       "Status": "Unassigned", "Latitude": r.lat ?? "", "Longitude": r.lng ?? "",
     }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Unassigned DTs");
     XLSX.writeFile(wb, "Unassigned_DTs.xlsx");
-    setDtMsg(`Excel exported: ${rows.length.toLocaleString()} unassigned DTs (${unassignedWithCoords.toLocaleString()} with coordinates).`);
+    setDtMsg(`Excel exported: ${rows.length.toLocaleString()} unassigned DTs${uaFeeder ? ` on ${uaFeeder}` : ""} (${unassignedWithCoords.toLocaleString()} with coordinates).`);
   };
   const exportUnassignedKml = () => {
     if (!unassignedWithCoords) return setDtMsg("No unassigned DT has coordinates yet — add latitude/longitude columns to your DT Lookup file (or upload an extra coordinates file), then export the KML.");
-    const blob = new Blob([buildKml(unassigned)], { type: "application/vnd.google-earth.kml+xml" });
+    const blob = new Blob([buildKml(uaScoped)], { type: "application/vnd.google-earth.kml+xml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = "Unassigned_DTs.kml";
@@ -221,6 +230,16 @@ function MapPage() {
     <div className="grid h-[calc(100vh-3.5rem)] grid-cols-1 lg:grid-cols-[320px_1fr]">
       <aside className="space-y-5 overflow-y-auto border-r bg-card p-4">
         <section className="space-y-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Map view</h2>
+          <div className="inline-flex w-full overflow-hidden rounded-md border text-sm font-bold" role="group" aria-label="Map view">
+            {([["data", "Enumeration data"], ["unassigned", "Unassigned DTs"]] as const).map(([v, label]) => (
+              <button key={v} type="button" onClick={() => setView(v)} className={"min-h-10 flex-1 px-3 " + (view === v ? "bg-foreground text-background" : "hover:bg-muted")}>{label}</button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">The map shows one view at a time — enumeration points and unassigned DTs are never mixed.</p>
+        </section>
+
+        <section className="space-y-2">
           <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">From dashboard</h2>
           <div className="flex gap-2">
             <select className={sel} value={spoolDate} onChange={(e) => { setSpoolDate(e.target.value); void spool(e.target.value); }}>
@@ -279,16 +298,20 @@ function MapPage() {
 
         <section className="space-y-2">
           <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Unassigned DTs</h2>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={showUnassigned} onChange={(e) => setShowUnassigned(e.target.checked)} />
-            <span className="h-2.5 w-2.5 rounded-full" style={{ background: "#f59e0b" }} />
-            Show unassigned DTs on the map
-          </label>
+          <select className={sel} value={uaFeeder} onChange={(e) => setUaFeeder(e.target.value)} aria-label="Feeder for unassigned DTs">
+            <option value="">All feeders</option>
+            {uaFeeder && !feederNames.includes(uaFeeder) && <option value={uaFeeder}>{uaFeeder}</option>}
+            {feederNames.map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
+          <button className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60" disabled={dtsBusy} onClick={() => void checkUnassigned()}>
+            {dtsBusy ? "Checking…" : "🔍 Check Field Manager for unassigned DTs"}
+          </button>
           <p className="text-xs text-muted-foreground">
-            {dtsBusy ? "Loading DTs…" : <><b>{unassigned.length.toLocaleString()}</b> unassigned · <b>{unassignedWithCoords.toLocaleString()}</b> with coordinates · <b>{(unassigned.length - unassignedWithCoords).toLocaleString()}</b> without</>}
+            {dtsBusy ? "Loading DTs…" : <><b>{uaScoped.length.toLocaleString()}</b> unassigned{uaFeeder ? <> on <b>{uaFeeder}</b></> : ""} · <b>{unassignedWithCoords.toLocaleString()}</b> with coordinates · <b>{(uaScoped.length - unassignedWithCoords).toLocaleString()}</b> without</>}
           </p>
           <p className="text-xs text-muted-foreground">
-            Coordinates come from your <b>DT Lookup</b> file (Dashboard → Upload Data Files): add latitude/longitude columns to it and the map picks them up automatically
+            Coordinates come from your <b>DT Lookup</b> file (Dashboard → Upload Data Files): add latitude/longitude columns to it.
+            They are <b>re-read every time the check runs</b>, so a fresh lookup upload shows up as soon as you press the check button
             {lookupCoords.size ? <> — <b>{lookupCoords.size.toLocaleString()}</b> loaded from the lookup</> : <> — none found in the lookup yet</>}.
           </p>
           <label className="flex cursor-pointer items-center justify-between rounded-md border border-dashed px-3 py-2 text-sm hover:bg-accent">
@@ -297,9 +320,8 @@ function MapPage() {
             <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadCoords(f); e.currentTarget.value = ""; }} />
           </label>
           <div className="flex gap-2">
-            <button className="flex-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60" disabled={!unassigned.length} onClick={exportUnassignedExcel}>Export Excel</button>
-            <button className="flex-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60" disabled={!unassigned.length} onClick={exportUnassignedKml}>Export KML</button>
-            <button className="rounded-md border px-3 py-1.5 text-sm disabled:opacity-60" disabled={dtsBusy} onClick={() => void loadUnassigned()}>↻</button>
+            <button className="flex-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60" disabled={!uaScoped.length} onClick={exportUnassignedExcel}>Export Excel</button>
+            <button className="flex-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60" disabled={!uaScoped.length} onClick={exportUnassignedKml}>Export KML</button>
           </div>
           {dtMsg && <p className="text-xs text-muted-foreground">{dtMsg}</p>}
         </section>
@@ -323,12 +345,17 @@ function MapPage() {
       <div className="relative p-2">
         <ClientOnly fallback={<div className="h-full animate-pulse rounded-lg bg-muted" />}>
           <Suspense fallback={<div className="h-full animate-pulse rounded-lg bg-muted" />}>
-            <GisMap points={filtered} showBoundaries={boundaries} dtNames={dtNames} dtMarkers={dtMarkers} />
+            <GisMap points={view === "data" ? filtered : []} showBoundaries={boundaries && view === "data"} dtNames={dtNames} dtMarkers={dtMarkers} />
           </Suspense>
         </ClientOnly>
-        {!all.length && !dtMarkers.length && (
+        {view === "data" && !filtered.length && (
           <div className="pointer-events-none absolute inset-0 z-[500] grid place-items-center">
             <div className="rounded-lg bg-card/95 px-5 py-3 text-sm shadow">Pick a dashboard date above, or upload DSS, HT, LT or Customer files with latitude/longitude columns.</div>
+          </div>
+        )}
+        {view === "unassigned" && !dtMarkers.length && (
+          <div className="pointer-events-none absolute inset-0 z-[500] grid place-items-center">
+            <div className="rounded-lg bg-card/95 px-5 py-3 text-sm shadow">No unassigned DTs with coordinates to show{uaFeeder ? <> on <b>{uaFeeder}</b></> : ""}. Press <b>🔍 Check Field Manager for unassigned DTs</b> — coordinates come from your DT Lookup file.</div>
           </div>
         )}
       </div>
