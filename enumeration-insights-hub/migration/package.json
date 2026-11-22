@@ -1,0 +1,14 @@
+{
+  "name": "spugis-migration",
+  "private": true,
+  "type": "module",
+  "description": "One-off tool: copy Field Manager, Mobile Devices and Weekly Report data into the spugis Firebase project.",
+  "scripts": {
+    "dry-run": "node migrate.mjs --dry-run",
+    "migrate": "node migrate.mjs",
+    "test": "node lib.test.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}
