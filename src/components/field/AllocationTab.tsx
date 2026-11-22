@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Lock, MessageCircle, Unlock } from "lucide-react";
 import { addRow, patchMany, removeMany, updateRow } from "@/lib/field/db";
@@ -14,6 +15,8 @@ import { Section, Stat, selectCls } from "./common";
 import { useConfirm } from "./ConfirmDialog";
 import { DtCheckDialog } from "./DtCheckDialog";
 import { DtFileCheckDialog } from "./DtFileCheckDialog";
+import { DtAppearedDialog } from "./DtAppearedDialog";
+import { buildKml, dtKey, loadDtCoords, loadLookupCoords, type UnassignedRow } from "@/lib/dtCoords";
 
 const DEFAULT_KEY = "eih_alloc_default";
 type FeederDefault = { feederId: string; statusF: string };
@@ -27,6 +30,7 @@ const readDefault = (): FeederDefault | null => {
 
 export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: boolean }) {
   const refresh = useRefresh();
+  const navigate = useNavigate();
   const { ask, dialog } = useConfirm();
   const [feederId, setFeederId] = useState<string>(m.feeders[0]?.feeder_id ?? "");
   const [statusF, setStatusF] = useState("all");
@@ -40,6 +44,8 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
   useEffect(() => { setSel(new Set()); }, [feederId]);
   const [checkOpen, setCheckOpen] = useState(false);
   const [fileCheckOpen, setFileCheckOpen] = useState(false);
+  const [appearedOpen, setAppearedOpen] = useState(false);
+  const [kmlBusy, setKmlBusy] = useState(false);
   // "Keep as default": this feeder and filter (for example Assigned (Ongoing)) open first, every time, on this device.
   const [def, setDef] = useState<FeederDefault | null>(null);
   const appliedDef = useRef(false);
@@ -119,6 +125,34 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
     setBulkBusy(false);
     toast.success(`${n} DT${n > 1 ? "s" : ""} marked completed`);
     refresh();
+  }
+
+  /** KML of this feeder's unassigned DTs, using the DT Lookup coordinates (the same source as the GIS Map). */
+  async function exportKmlUnassigned() {
+    if (!feeder) return;
+    setKmlBusy(true);
+    try {
+      const coords = await loadDtCoords();
+      (await loadLookupCoords()).forEach((v, k) => coords.set(k, v)); // the DT Lookup wins
+      const rows: UnassignedRow[] = m.dts
+        .filter((d) => d.feeder_id === feederId && d.status === "unassigned")
+        .map((d) => {
+          const c = coords.get(dtKey(d.dt_id));
+          return { dt_id: d.dt_id, dt_name: d.dt_name ?? "", feeder_id: d.feeder_id, feeder_name: feeder.feeder_name, lat: c?.lat ?? null, lng: c?.lng ?? null };
+        });
+      const withCoords = rows.filter((r) => r.lat != null).length;
+      if (!rows.length) return toast.message(`No unassigned DTs on ${feeder.feeder_name}`);
+      if (!withCoords) return toast.error("No unassigned DT on this feeder has coordinates yet", { description: "Add latitude/longitude columns to your DT Lookup file (Dashboard → Upload Data Files → DT Lookup), then try again." });
+      const blob = new Blob([buildKml(rows)], { type: "application/vnd.google-earth.kml+xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `Unassigned_DTs_${feederId}.kml`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`KML exported: ${withCoords.toLocaleString()} unassigned DT${withCoords === 1 ? "" : "s"} with coordinates on ${feeder.feeder_name}`);
+    } catch (e: any) {
+      toast.error(e?.message ?? String(e));
+    } finally { setKmlBusy(false); }
   }
 
   const askBulkComplete = (list: DT[]) => {
@@ -372,6 +406,9 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
             </Button>
                 <Button className="h-11" onClick={() => setCheckOpen(true)}>🔎 Check DTs by date</Button>
                 <Button variant="outline" className="h-11" onClick={() => setFileCheckOpen(true)}>📁 Check DTs against a file</Button>
+                <Button variant="outline" className="h-11" onClick={() => setAppearedOpen(true)}>📍 Find unassigned DTs in a file</Button>
+                <Button variant="outline" className="h-11" onClick={() => void navigate({ to: "/map", search: { view: "unassigned", feeder: feeder?.feeder_name ?? "" } })}>🗺 Show unassigned on map</Button>
+                <Button variant="outline" className="h-11" disabled={kmlBusy || !stats.unassigned} onClick={() => void exportKmlUnassigned()}>{kmlBusy ? "Preparing…" : "🌍 Export KML (unassigned)"}</Button>
                 {isAdmin && feeder && (
               <Button variant={feeder.locked ? "default" : "outline"} className="h-11" onClick={toggleLock}>
                 {feeder.locked ? <><Lock /> Locked: unlock</> : <><Unlock /> Lock feeder</>}
@@ -502,6 +539,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
       {statusDt && <StatusDialog dt={statusDt} onClose={() => setStatusDt(null)} />}
       <DtCheckDialog m={m} feederId={feederId} open={checkOpen} onOpenChange={setCheckOpen} onComplete={bulkComplete} busy={bulkBusy} />
       <DtFileCheckDialog m={m} feederId={feederId} open={fileCheckOpen} onOpenChange={setFileCheckOpen} onComplete={bulkComplete} busy={bulkBusy} />
+      <DtAppearedDialog m={m} feederId={feederId} open={appearedOpen} onOpenChange={setAppearedOpen} onSaved={() => refresh()} />
       {dialog}
     </div>
   );
