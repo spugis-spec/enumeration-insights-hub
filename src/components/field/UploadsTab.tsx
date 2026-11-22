@@ -38,6 +38,7 @@ import {
   type SnapshotMeta,
 } from "@/lib/field/dataTools";
 import { coordsFromRows, withLookupCoords } from "@/lib/dtCoords";
+import { lookupStatusFor } from "@/lib/field/lookupStatus";
 import { Button } from "@/components/ui/button";
 import { Section } from "./common";
 import { ConfirmDialog, type ConfirmReq } from "./ConfirmDialog";
@@ -223,6 +224,7 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
         const rows = await readSheet(file);
         const feeders = new Map<string, any>();
         const dts = new Map<string, any>();
+        const statusByDt = new Map<string, string | null>();
         let cur: {
           id: string | null;
           name: string | null;
@@ -302,6 +304,7 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
               dt_type: pick(r, "DT_TYPE", "DT TYPE"),
             }),
           );
+          statusByDt.set(dtid, pick(r, "STATUS", "Status", "status"));
         }
         if (!feeders.size)
           throw new Error(
@@ -313,6 +316,16 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
         // without lat/lng, which (with the merge save) keeps any coordinates already stored.
         const { coords } = coordsFromRows(rows);
         const { rows: dtRows, attached } = withLookupCoords([...dts.values()], coords);
+        // The file's STATUS column is imported for DTs that are new or still unassigned in the
+        // app. A status recorded in the app itself (assigned / completed / problematic) is
+        // never overwritten by the lookup file — see lookupStatusFor.
+        let statusesImported = 0;
+        const dtRowsFinal = dtRows.map((r) => {
+          const st = lookupStatusFor(m.dtById.get(r.dt_id)?.status, statusByDt.get(r.dt_id));
+          if (!st) return r;
+          statusesImported++;
+          return { ...r, status: st };
+        });
         await upsertMany(
           "feeders",
           [...feeders.values()],
@@ -321,10 +334,14 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
         );
         await upsertMany(
           "dts",
-          dtRows,
+          dtRowsFinal,
           (r) => r.dt_id,
           (d, t) => p("Saving DTs", d, t),
         );
+        const noteParts = [
+          attached && `${attached} with coordinates`,
+          statusesImported && `${statusesImported} statuses imported`,
+        ].filter(Boolean);
         await logUpload({
           kind: "lookup",
           filename: file.name,
@@ -336,10 +353,11 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
           feeders: feeders.size,
           date_from: null,
           date_to: null,
-          note: attached ? `${attached} with coordinates` : null,
+          note: noteParts.length ? noteParts.join(" · ") : null,
         });
         const notes = [
           attached && `${attached} DT${attached > 1 ? "s" : ""} saved with coordinates`,
+          statusesImported && `${statusesImported} DT status${statusesImported > 1 ? "es" : ""} imported`,
           dup && `${dup} duplicate DT ID row${dup > 1 ? "s" : ""} merged`,
           noDtId && `${noDtId} row${noDtId > 1 ? "s" : ""} skipped (no DT_ID)`,
           noFeeder && `${noFeeder} row${noFeeder > 1 ? "s" : ""} skipped (no feeder)`,
@@ -818,9 +836,11 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
         <>
           Columns: <b>FEEDER NAME, FEEDER_ID, AREA, FEEDER_TYPE, DT_NAME, DT_ID, DT_TYPE</b>, plus
           optional <b>LONGITUDE, LATITUDE</b> — kept on each DT and used by the GIS Map to place
-          the unassigned DTs. A
+          the unassigned DTs — and optional <b>STATUS</b>, imported for DTs that are new or
+          currently unassigned; a status already recorded in the app (assigned, completed,
+          problematic) is never overwritten by the file. A
           feeder can be written once with its DTs listed under it (blank feeder cells are filled
-          down). Existing allocations and statuses are kept. Now: {m.feeders.length} feeders,{" "}
+          down). Existing allocations are kept. Now: {m.feeders.length} feeders,{" "}
           {m.dts.length} DTs.
         </>,
         lookup,
