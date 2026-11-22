@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildKml, coordsFromLookup, coordsFromRows, dtKey } from "@/lib/dtCoords";
+import { buildKml, coordsFromLookup, coordsFromRows, dtKey, ownCoords, withLookupCoords } from "@/lib/dtCoords";
 
 describe("dtKey", () => {
   it("normalises DT IDs for matching", () => {
@@ -28,6 +28,79 @@ describe("coordsFromRows", () => {
   it("returns nothing when there are no coordinate columns", () => {
     const { coords } = coordsFromRows([{ "DT ID": "1", feeder: "X" }]);
     expect(coords.size).toBe(0);
+  });
+});
+
+describe("coordsFromRows with the Field Manager lookup file's exact headers", () => {
+  const headerRow = {
+    "FEEDER NAME": "132KV KATAMPE 1 TS_33KV JABI FDR_PL_PL",
+    FEEDER_ID: "509201",
+    AREA: "APO",
+    FEEDER_TYPE: null,
+    DT_NAME: "MAITAMA JUNCTION S/S",
+    DT_ID: "509201003401",
+    DT_TYPE: "PUBLIC",
+    STATUS: "completed",
+    LONGITUDE: 7.4800668,
+    LATITUDE: 9.1074609,
+  };
+
+  it("reads DT_ID + LONGITUDE/LATITUDE, as numbers and as strings", () => {
+    const { coords, skipped } = coordsFromRows([
+      headerRow,
+      { ...headerRow, DT_ID: "509201009401", DT_NAME: "BESIDE UNITED SURGICAL S/S", LONGITUDE: "7.4745401669571", LATITUDE: "9.09466996339987" },
+      { ...headerRow, DT_ID: "501101001001", DT_NAME: "DRAMBS VILLA S/S", LONGITUDE: null, LATITUDE: null },
+    ]);
+    expect(coords.size).toBe(2);
+    expect(coords.get("509201003401")).toEqual({ lat: 9.1074609, lng: 7.4800668 });
+    expect(coords.get("509201009401")).toEqual({ lat: 9.09466996339987, lng: 7.4745401669571 });
+    expect(coords.has("501101001001")).toBe(false);
+    expect(skipped).toBe(1);
+  });
+});
+
+describe("withLookupCoords", () => {
+  const { coords } = coordsFromRows([
+    { DT_ID: "509201003401", LONGITUDE: 7.4800668, LATITUDE: 9.1074609 },
+    { DT_ID: "509201003402", LONGITUDE: "7.4743", LATITUDE: "9.0958" },
+  ]);
+
+  it("attaches coordinates by normalised DT ID and counts them", () => {
+    const records = [
+      { dt_id: "509201003401", dt_name: "MAITAMA JUNCTION S/S", feeder_id: "509201" },
+      { dt_id: "5092 0100-3402", dt_name: "SAME DT, WRITTEN WITH SPACES", feeder_id: "509201" },
+      { dt_id: "999999999999", dt_name: "NOT IN THE FILE", feeder_id: "509201" },
+    ];
+    const { rows, attached } = withLookupCoords(records, coords);
+    expect(attached).toBe(2);
+    expect(rows[0]).toMatchObject({ dt_name: "MAITAMA JUNCTION S/S", lat: 9.1074609, lng: 7.4800668 });
+    expect(rows[1]).toMatchObject({ lat: 9.0958, lng: 7.4743 });
+  });
+
+  it("leaves unmatched records untouched — no lat/lng keys are added", () => {
+    const records = [{ dt_id: "999999999999", dt_name: "NOT IN THE FILE" }];
+    const { rows, attached } = withLookupCoords(records, coords);
+    expect(attached).toBe(0);
+    expect(rows[0]).toBe(records[0]);
+    expect("lat" in rows[0]!).toBe(false);
+    expect("lng" in rows[0]!).toBe(false);
+  });
+
+  it("returns every record, in order", () => {
+    const records = [{ dt_id: "1" }, { dt_id: "509201003401" }, { dt_id: "2" }];
+    const { rows } = withLookupCoords(records, coords);
+    expect(rows.map((r) => r.dt_id)).toEqual(["1", "509201003401", "2"]);
+  });
+});
+
+describe("ownCoords", () => {
+  it("accepts a record's own valid coordinates and rejects bad ones", () => {
+    expect(ownCoords({ lat: 9.1074609, lng: 7.4800668 })).toEqual({ lat: 9.1074609, lng: 7.4800668 });
+    expect(ownCoords({ lat: "9.1", lng: "7.48" })).toEqual({ lat: 9.1, lng: 7.48 });
+    expect(ownCoords({ lat: null, lng: null })).toBeNull();
+    expect(ownCoords({})).toBeNull();
+    expect(ownCoords({ lat: 0, lng: 0 })).toBeNull();
+    expect(ownCoords({ lat: 91, lng: 7.4 })).toBeNull();
   });
 });
 

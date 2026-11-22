@@ -37,6 +37,7 @@ import {
   restoreSnapshot,
   type SnapshotMeta,
 } from "@/lib/field/dataTools";
+import { coordsFromRows, withLookupCoords } from "@/lib/dtCoords";
 import { Button } from "@/components/ui/button";
 import { Section } from "./common";
 import { ConfirmDialog, type ConfirmReq } from "./ConfirmDialog";
@@ -307,6 +308,11 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
             "No feeders found. Check that the file has FEEDER_ID (or FEEDER NAME) and DT_ID columns.",
           );
 
+        // LONGITUDE/LATITUDE columns (when the file carries them) are kept on each DT, so the
+        // GIS Map can place the unassigned DTs. DTs whose row has no coordinates are saved
+        // without lat/lng, which (with the merge save) keeps any coordinates already stored.
+        const { coords } = coordsFromRows(rows);
+        const { rows: dtRows, attached } = withLookupCoords([...dts.values()], coords);
         await upsertMany(
           "feeders",
           [...feeders.values()],
@@ -315,7 +321,7 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
         );
         await upsertMany(
           "dts",
-          [...dts.values()],
+          dtRows,
           (r) => r.dt_id,
           (d, t) => p("Saving DTs", d, t),
         );
@@ -330,9 +336,10 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
           feeders: feeders.size,
           date_from: null,
           date_to: null,
-          note: null,
+          note: attached ? `${attached} with coordinates` : null,
         });
         const notes = [
+          attached && `${attached} DT${attached > 1 ? "s" : ""} saved with coordinates`,
           dup && `${dup} duplicate DT ID row${dup > 1 ? "s" : ""} merged`,
           noDtId && `${noDtId} row${noDtId > 1 ? "s" : ""} skipped (no DT_ID)`,
           noFeeder && `${noFeeder} row${noFeeder > 1 ? "s" : ""} skipped (no feeder)`,
@@ -809,7 +816,9 @@ export function UploadsTab({ m, goTo }: { m: Model; goTo?: (tab: string) => void
         "lookup",
         "1. Feeder & DT lookup",
         <>
-          Columns: <b>FEEDER NAME, FEEDER_ID, AREA, FEEDER_TYPE, DT_NAME, DT_ID, DT_TYPE</b>. A
+          Columns: <b>FEEDER NAME, FEEDER_ID, AREA, FEEDER_TYPE, DT_NAME, DT_ID, DT_TYPE</b>, plus
+          optional <b>LONGITUDE, LATITUDE</b> — kept on each DT and used by the GIS Map to place
+          the unassigned DTs. A
           feeder can be written once with its DTs listed under it (blank feeder cells are filled
           down). Existing allocations and statuses are kept. Now: {m.feeders.length} feeders,{" "}
           {m.dts.length} DTs.

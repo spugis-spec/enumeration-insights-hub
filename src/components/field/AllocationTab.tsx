@@ -16,7 +16,7 @@ import { useConfirm } from "./ConfirmDialog";
 import { DtCheckDialog } from "./DtCheckDialog";
 import { DtFileCheckDialog } from "./DtFileCheckDialog";
 import { DtAppearedDialog } from "./DtAppearedDialog";
-import { buildKml, dtKey, loadDtCoords, loadLookupCoords, type UnassignedRow } from "@/lib/dtCoords";
+import { buildKml, dtKey, loadDtCoords, loadLookupCoords, ownCoords, type UnassignedRow } from "@/lib/dtCoords";
 
 const DEFAULT_KEY = "eih_alloc_default";
 type FeederDefault = { feederId: string; statusF: string };
@@ -127,22 +127,23 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
     refresh();
   }
 
-  /** KML of this feeder's unassigned DTs, using the DT Lookup coordinates (the same source as the GIS Map). */
+  /** KML of this feeder's unassigned DTs. A DT's own coordinates (from the Field Manager lookup
+   * file) win; the DT Lookup / device coordinates fill the rest — the same order as the GIS Map. */
   async function exportKmlUnassigned() {
     if (!feeder) return;
     setKmlBusy(true);
     try {
       const coords = await loadDtCoords();
-      (await loadLookupCoords()).forEach((v, k) => coords.set(k, v)); // the DT Lookup wins
+      (await loadLookupCoords()).forEach((v, k) => coords.set(k, v)); // the DT Lookup wins over the device file
       const rows: UnassignedRow[] = m.dts
         .filter((d) => d.feeder_id === feederId && d.status === "unassigned")
         .map((d) => {
-          const c = coords.get(dtKey(d.dt_id));
+          const c = ownCoords(d) ?? coords.get(dtKey(d.dt_id));
           return { dt_id: d.dt_id, dt_name: d.dt_name ?? "", feeder_id: d.feeder_id, feeder_name: feeder.feeder_name, lat: c?.lat ?? null, lng: c?.lng ?? null };
         });
       const withCoords = rows.filter((r) => r.lat != null).length;
       if (!rows.length) return toast.message(`No unassigned DTs on ${feeder.feeder_name}`);
-      if (!withCoords) return toast.error("No unassigned DT on this feeder has coordinates yet", { description: "Add latitude/longitude columns to your DT Lookup file (Dashboard → Upload Data Files → DT Lookup), then try again." });
+      if (!withCoords) return toast.error("No unassigned DT on this feeder has coordinates yet", { description: "Add LONGITUDE/LATITUDE columns to the Feeder & DT lookup file (Field Manager → Data Uploads), upload it, then try again." });
       const blob = new Blob([buildKml(rows)], { type: "application/vnd.google-earth.kml+xml" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

@@ -9,7 +9,7 @@ import { rowsToPoints, ASSET_LABELS, type AssetType, type GisPoint } from "@/lib
 import { loadDtNames, type DtNames } from "@/lib/dtNames";
 import { listAll } from "@/lib/field/db";
 import type { DT, Feeder } from "@/lib/field/data";
-import { buildKml, coordsFromRows, dtKey, loadDtCoords, loadLookupCoords, saveDtCoords, type DtCoordMap, type DtMapMarker, type UnassignedRow } from "@/lib/dtCoords";
+import { buildKml, coordsFromRows, dtKey, loadDtCoords, loadLookupCoords, ownCoords, saveDtCoords, type DtCoordMap, type DtMapMarker, type UnassignedRow } from "@/lib/dtCoords";
 import * as XLSX from "xlsx";
 
 const GisMap = lazy(() => import("@/components/GisMap"));
@@ -48,8 +48,9 @@ function MapPage() {
   const [names, setNames] = useState<Record<string, string>>({});
   const [dtNames, setDtNames] = useState<DtNames>({});
   useEffect(() => { void loadDtNames().then(setDtNames); }, []);
-  // Unassigned DTs (Field Manager) + their coordinates: from the DT Lookup (main source)
-  // merged over any extra coordinates file uploaded on this page (kept on this device).
+  // Unassigned DTs (Field Manager). Coordinates: a DT's own lat/lng (kept from the Field
+  // Manager lookup file) wins; the DT Lookup (Dashboard) merged over any extra coordinates
+  // file uploaded on this page (kept on this device) fills the rest.
   const [deviceCoords, setDeviceCoords] = useState<DtCoordMap>(new Map());
   const [lookupCoords, setLookupCoords] = useState<DtCoordMap>(new Map());
   const [unassigned, setUnassigned] = useState<UnassignedRow[]>([]);
@@ -73,7 +74,7 @@ function MapPage() {
       const rows = dts
         .filter((d) => d.status === "unassigned")
         .map((d) => {
-          const c = merged.get(dtKey(d.dt_id));
+          const c = ownCoords(d) ?? merged.get(dtKey(d.dt_id));
           return { dt_id: d.dt_id, dt_name: d.dt_name ?? "", feeder_id: d.feeder_id, feeder_name: fname.get(d.feeder_id) ?? "", lat: c?.lat ?? null, lng: c?.lng ?? null };
         })
         .sort((a, b) => (a.dt_name || a.dt_id).localeCompare(b.dt_name || b.dt_id));
@@ -102,7 +103,7 @@ function MapPage() {
       coords.forEach((v, k) => merged.set(k, v));
       setDeviceCoords(merged);
       void saveDtCoords(merged).catch(() => {}).then(() => checkUnassigned());
-      setDtMsg(`Saved ${coords.size.toLocaleString()} extra DT coordinates from ${file.name}${skipped ? ` (${skipped.toLocaleString()} rows skipped — no DT ID or no coordinates)` : ""}. They stay on this device; the DT Lookup remains the main source.`);
+      setDtMsg(`Saved ${coords.size.toLocaleString()} extra DT coordinates from ${file.name}${skipped ? ` (${skipped.toLocaleString()} rows skipped — no DT ID or no coordinates)` : ""}. They stay on this device and top up the DTs' own coordinates and the Dashboard DT Lookup.`);
     };
     w.addEventListener("message", onMsg);
     w.postMessage({ id, buffer }, [buffer]);
@@ -310,9 +311,11 @@ function MapPage() {
             {dtsBusy ? "Loading DTs…" : <><b>{uaScoped.length.toLocaleString()}</b> unassigned{uaFeeder ? <> on <b>{uaFeeder}</b></> : ""} · <b>{unassignedWithCoords.toLocaleString()}</b> with coordinates · <b>{(uaScoped.length - unassignedWithCoords).toLocaleString()}</b> without</>}
           </p>
           <p className="text-xs text-muted-foreground">
-            Coordinates come from your <b>DT Lookup</b> file (Dashboard → Upload Data Files): add latitude/longitude columns to it.
-            They are <b>re-read every time the check runs</b>, so a fresh lookup upload shows up as soon as you press the check button
-            {lookupCoords.size ? <> — <b>{lookupCoords.size.toLocaleString()}</b> loaded from the lookup</> : <> — none found in the lookup yet</>}.
+            Coordinates come first from the <b>DT records themselves</b>: add <b>LONGITUDE/LATITUDE</b> columns to the Feeder &amp; DT lookup
+            file you upload in the <b>Field Manager</b> (Data Uploads) and each DT keeps its own coordinates. The <b>DT Lookup</b> file
+            (Dashboard → Upload Data Files) and the extra file below are additional sources. Everything is <b>re-read every time the
+            check runs</b>, so a fresh upload shows up as soon as you press the check button
+            {lookupCoords.size ? <> — <b>{lookupCoords.size.toLocaleString()}</b> loaded from the Dashboard lookup</> : ""}.
           </p>
           <label className="flex cursor-pointer items-center justify-between rounded-md border border-dashed px-3 py-2 text-sm hover:bg-accent">
             <span className="font-medium">Extra coordinates file (optional)</span>

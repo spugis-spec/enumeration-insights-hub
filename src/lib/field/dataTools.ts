@@ -32,19 +32,20 @@ export function downloadSheet(name: string, rows: Record<string, any>[], headers
   XLSX.writeFile(wb, `${name}_${stamp()}.xlsx`);
 }
 
-/** Same columns as the upload, so a downloaded file can be uploaded again. */
+/** Same columns as the upload, so a downloaded file can be uploaded again — LONGITUDE/LATITUDE
+ * included, so the coordinates kept on each DT round-trip through the file. */
 export function downloadLookup(m: Model) {
-  const headers = ["FEEDER NAME", "FEEDER_ID", "AREA", "FEEDER_TYPE", "DT_NAME", "DT_ID", "DT_TYPE", "STATUS"];
+  const headers = ["FEEDER NAME", "FEEDER_ID", "AREA", "FEEDER_TYPE", "DT_NAME", "DT_ID", "DT_TYPE", "STATUS", "LONGITUDE", "LATITUDE"];
   const rows: Record<string, any>[] = [];
   const byFeeder = new Map<string, typeof m.dts>();
   for (const d of m.dts) byFeeder.set(d.feeder_id, [...(byFeeder.get(d.feeder_id) ?? []), d]);
   for (const f of m.feeders) {
     const list = byFeeder.get(f.feeder_id) ?? [];
     const base = { "FEEDER NAME": f.feeder_name, FEEDER_ID: f.feeder_id, AREA: f.area ?? "", FEEDER_TYPE: f.feeder_type ?? "" };
-    if (!list.length) rows.push({ ...base, DT_NAME: "", DT_ID: "", DT_TYPE: "", STATUS: "" });
-    for (const d of list) rows.push({ ...base, DT_NAME: d.dt_name ?? "", DT_ID: d.dt_id, DT_TYPE: d.dt_type ?? "", STATUS: d.status });
+    if (!list.length) rows.push({ ...base, DT_NAME: "", DT_ID: "", DT_TYPE: "", STATUS: "", LONGITUDE: "", LATITUDE: "" });
+    for (const d of list) rows.push({ ...base, DT_NAME: d.dt_name ?? "", DT_ID: d.dt_id, DT_TYPE: d.dt_type ?? "", STATUS: d.status, LONGITUDE: d.lng ?? "", LATITUDE: d.lat ?? "" });
   }
-  for (const d of m.dts) if (!m.feederById.has(d.feeder_id)) rows.push({ "FEEDER NAME": "", FEEDER_ID: d.feeder_id, AREA: "", FEEDER_TYPE: "", DT_NAME: d.dt_name ?? "", DT_ID: d.dt_id, DT_TYPE: d.dt_type ?? "", STATUS: d.status });
+  for (const d of m.dts) if (!m.feederById.has(d.feeder_id)) rows.push({ "FEEDER NAME": "", FEEDER_ID: d.feeder_id, AREA: "", FEEDER_TYPE: "", DT_NAME: d.dt_name ?? "", DT_ID: d.dt_id, DT_TYPE: d.dt_type ?? "", STATUS: d.status, LONGITUDE: d.lng ?? "", LATITUDE: d.lat ?? "" });
   downloadSheet("feeder_dt_lookup", rows, headers);
   return rows.length;
 }
