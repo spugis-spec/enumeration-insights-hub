@@ -3,12 +3,15 @@ import { getDb } from "./firebase";
 import { rowsToPoints } from "./gis";
 
 /**
- * DT coordinates for the GIS Map. The main source is the DT Lookup uploaded on the Dashboard
- * (Upload Data Files → DT Lookup): when that file carries latitude/longitude columns, the
- * coordinates are saved with the lookup (this device + the cloud dtLookup copy) and read here.
- * A separate coordinates file can also be uploaded on the map page itself as a top-up; those
- * are kept on this device (IndexedDB). Coordinates are matched to Field Manager DTs by
- * normalised DT ID, so the map can show where the unassigned DTs are and export them.
+ * DT coordinates for the GIS Map. A DT record can carry its own coordinates: the Field Manager's
+ * Feeder & DT lookup upload keeps the file's LONGITUDE/LATITUDE columns on each DT (see
+ * withLookupCoords), and the map / KML exports prefer those. The DT Lookup uploaded on the
+ * Dashboard (Upload Data Files → DT Lookup) is another source: when that file carries
+ * latitude/longitude columns, the coordinates are saved with the lookup (this device + the
+ * cloud dtLookup copy) and read here. A separate coordinates file can also be uploaded on the
+ * map page itself as a top-up; those are kept on this device (IndexedDB). Coordinates are
+ * matched to Field Manager DTs by normalised DT ID, so the map can show where the unassigned
+ * DTs are and export them.
  */
 
 export type DtCoord = { lat: number; lng: number };
@@ -24,6 +27,28 @@ export function coordsFromRows(rows: Record<string, unknown>[]): { coords: DtCoo
   for (const p of pts) if (p.dtId) coords.set(dtKey(p.dtId), { lat: p.lat, lng: p.lng });
   const withId = pts.filter((p) => p.dtId).length;
   return { coords, skipped: rows.length - withId };
+}
+
+/**
+ * Attaches coordinates to records (e.g. the DTs built by the Field Manager lookup import) from a
+ * coordinate map, matched by normalised DT ID. Records with no match are returned untouched — no
+ * lat/lng keys are added — so a merge-save preserves whatever coordinates are already stored.
+ */
+export function withLookupCoords<T extends { dt_id: string }>(records: T[], coords: DtCoordMap): { rows: (T & { lat?: number; lng?: number })[]; attached: number } {
+  let attached = 0;
+  const rows = records.map((r) => {
+    const c = coords.get(dtKey(r.dt_id));
+    if (!c) return r;
+    attached++;
+    return { ...r, lat: c.lat, lng: c.lng };
+  });
+  return { rows, attached };
+}
+
+/** A record's own coordinates, when they are present and plausible; null otherwise. */
+export function ownCoords(rec: { lat?: unknown; lng?: unknown }): DtCoord | null {
+  const lat = Number(rec.lat), lng = Number(rec.lng);
+  return isFinite(lat) && isFinite(lng) && lat !== 0 && lng !== 0 && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
 }
 
 /** Extracts the coordinates from a saved DT Lookup object (entries without valid lat/lng are skipped). */

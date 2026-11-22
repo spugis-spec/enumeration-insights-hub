@@ -6,7 +6,7 @@ import { listAll } from "./db";
 export type Feeder = { id: string; feeder_id: string; feeder_name: string; area: string | null; feeder_type: string | null; est_customer_points: number | null; start_date: string | null; target_per_staff_day: number | null; working_days_per_week: number | null; notes?: string | null; locked?: boolean | null };
 /** A username that has captured on a DT. Kept on the DT forever, even after the person leaves the project. */
 export type DtWorker = { username: string; first: string | null; last: string | null; source?: string | null };
-export type DT = { id: string; dt_id: string; feeder_id: string; dt_name: string | null; dt_type: string | null; status: string; status_note: string | null; updated_at?: string | null; updated_by?: string | null; workers?: DtWorker[] | null };
+export type DT = { id: string; dt_id: string; feeder_id: string; dt_name: string | null; dt_type: string | null; status: string; status_note: string | null; lat?: number | null; lng?: number | null; updated_at?: string | null; updated_by?: string | null; workers?: DtWorker[] | null };
 export type Enumerator = { id: string; username: string; full_name: string | null; phone: string | null; supervisor: string | null; active: boolean | null };
 export type Allocation = { id: string; dt_id: string; enumerator_id: string; allocated_by: string | null; allocated_on: string; due_date: string | null; notes: string | null; status: string; completed_on: string | null; self_assigned?: boolean | null; authorized?: boolean | null; last_worked_on?: string | null };
 /** One row = one enumerator on one DT on one day (many captures are rolled into `count`). Old per-capture rows have no `day` and count as 1. */
