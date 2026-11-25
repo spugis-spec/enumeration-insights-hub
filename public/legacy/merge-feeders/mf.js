@@ -6,6 +6,9 @@
  * Added: an Auto-run card that chains the whole flow in one click (load zips, the Date/Time
  * source picked in the card — __created, time or __modified — process + export to the
  * remembered/default folder, attach, then generate the report for one chosen date).
+ * Auto-run exports are written straight to the remembered output folder (the click itself
+ * re-grants permission; same-name files are overwritten) and contain only the report
+ * date's rows — the data attached to the upload boxes still carries every date.
  * The manual steps are unchanged.
  * Runs entirely in the browser. Its libraries (JSZip, PapaParse) are served from this folder, not a CDN.
  */
@@ -46,7 +49,7 @@
     'pick your date/time column, export streamlined files, then attach them straight to the upload boxes above.</p>' +
 
     '<div class="mf-card" id="mf-autoCard"><h2>⚡ Auto-run (one click)</h2>' +
-    '<p class="mf-hint">Drop all the zips here, pick the <b>report date</b> and the <b>Date/Time source</b>, and press Auto-run: the tool loads and inspects the files, uses the source you picked as each file\'s date/time column (a file that does not have that column keeps its own default), processes and exports them (to the folder chosen in Step 4 below — your last used folder is remembered — or to your normal Downloads folder), attaches them to the Upload Data Files boxes, and generates the report for that date alone. Keep this tab open while it runs. Prefer to do it yourself? The manual steps 1–5 below work exactly as before.</p>' +
+    '<p class="mf-hint">Drop all the zips here, pick the <b>report date</b> and the <b>Date/Time source</b>, and press Auto-run: the tool loads and inspects the files, uses the source you picked as each file\'s date/time column (a file that does not have that column keeps its own default), processes and exports them, attaches them to the Upload Data Files boxes, and generates the report for that date alone. The exports are saved automatically to the output folder remembered from Step 4 — no asking, and a file with the same name is overwritten — or, if no folder can be used, to your normal Downloads folder. <b>The saved export files contain only the chosen report date\'s rows</b>; the files attached to the Upload Data Files boxes still carry every date. Keep this tab open while it runs. Prefer to do it yourself? The manual steps 1–5 below work exactly as before.</p>' +
     '<div class="mf-kv"><div><label class="mf-small">All zip files</label><input type="file" id="mf-autoZips" accept=".zip" multiple></div>' +
     '<div><label class="mf-small">Report date</label><input type="date" id="mf-autoDate"></div>' +
     '<div><label class="mf-small">Date/Time source</label><select id="mf-autoSource"><option value="__created" selected>__created</option><option value="time">time</option><option value="__modified">__modified</option></select></div></div>' +
@@ -323,12 +326,19 @@
     }
 
     // ---------- Step 4b: process (& optionally export) ----------
-    async function runProcess(doExport) {
+    // opts.writeDate (Auto-run only): the processed results kept in memory stay FULL and
+    // unfiltered (Step 5 attaches those, every date included), but each file WRITTEN out is
+    // built from a second mergeFile pass limited to that one date — the exact same date
+    // filtering (and parsing) as setting Step 4's From and Through to that date by hand.
+    async function runProcess(doExport, opts) {
       var keepFields = $('#mf-keepFields').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
       var format = $('#mf-outputFormat').value;
       var fromVal = $('#mf-dateFrom').value, toVal = $('#mf-dateTo').value;
       var fromDate = fromVal ? new Date(fromVal + 'T00:00:00') : null;
       var toDate = toVal ? new Date(toVal + 'T23:59:59') : null;
+      var writeDate = (opts && opts.writeDate) || null;
+      var writeFrom = writeDate ? new Date(writeDate + 'T00:00:00') : null;
+      var writeTo = writeDate ? new Date(writeDate + 'T23:59:59') : null;
       if (keepFields.length === 0) { logLine('Please list at least one column to keep.', 'err'); return; }
       if (fromDate && toDate && fromDate > toDate) { logLine('"From" date is after "through" date — please fix the range.', 'err'); return; }
       processBtn.disabled = true; processOnlyBtn.disabled = true;
@@ -344,6 +354,7 @@
         }
       }
       if (fromDate || toDate) logLine('Filtering to: ' + (fromVal || 'the beginning') + ' → ' + (toVal || 'the end'), 'info');
+      if (writeDate) logLine('Auto-run: the files saved will contain only rows dated ' + writeDate + ' (the report date). The data attached in Step 5 keeps every date.', 'info');
 
       // Pass 1: process every file (nothing is written yet, so ring main unit rows can be folded into the DT file first)
       for (var i = 0; i < loadedFiles.length; i++) {
@@ -360,7 +371,13 @@
           var rowLabel = result.filtered
             ? result.rows.length.toLocaleString() + ' of ' + result.totalDataRows.toLocaleString() + ' rows (date-filtered)'
             : result.rows.length.toLocaleString() + ' rows';
-          processed.push({ f: f, name: base + '_MERGED', result: result, section: detectSection(f), include: true, rowLabel: rowLabel, isRmu: isRmu(f) });
+          // Auto-run only: the report-date-only copy used for the files written out.
+          var writeResult = null;
+          if (writeDate) {
+            var wr = mergeFile(f, keepFields, writeFrom, writeTo);
+            if (!wr.skipped) writeResult = wr;
+          }
+          processed.push({ f: f, name: base + '_MERGED', result: result, writeResult: writeResult, writeDate: writeDate, section: detectSection(f), include: true, rowLabel: rowLabel, isRmu: isRmu(f) });
         } catch (err) {
           logLine(f.name + ' — error: ' + err.message, 'err');
         }
@@ -375,16 +392,22 @@
         try {
           if (!doExport) { logLine(p.name + ' — ' + rowLabel2 + ' processed', 'ok'); continue; }
 
+          // Auto-run writes the report-date-only copy; the in-memory result (attached in Step 5) stays full.
+          var outRes = p.writeResult || result2;
+          var outLabel = p.writeResult
+            ? p.writeResult.rows.length.toLocaleString() + ' rows — report date ' + p.writeDate + ' only (of ' + result2.rows.length.toLocaleString() + ' processed)'
+            : rowLabel2;
+
           var outBuf, outName, blobType;
           if (format === 'csv') {
-            outBuf = buildCsv(result2, $('#mf-protectIds').checked);
+            outBuf = buildCsv(outRes, $('#mf-protectIds').checked);
             outName = base2 + '.csv'; blobType = 'text/csv';
           } else {
             var wb = XLSX.utils.book_new();
-            var ws = XLSX.utils.aoa_to_sheet([result2.headers].concat(result2.rows));
-            var dtIdx2 = result2.headers.indexOf('DT ID');
+            var ws = XLSX.utils.aoa_to_sheet([outRes.headers].concat(outRes.rows));
+            var dtIdx2 = outRes.headers.indexOf('DT ID');
             if (dtIdx2 >= 0) {
-              for (var r = 1; r <= result2.rows.length; r++) {
+              for (var r = 1; r <= outRes.rows.length; r++) {
                 var cell = ws[XLSX.utils.encode_cell({ r: r, c: dtIdx2 })];
                 if (cell && cell.v !== '') { cell.t = 's'; cell.v = String(cell.v); cell.z = '@'; }
               }
@@ -404,14 +427,14 @@
               await writable.write(outBuf);
               await writable.close();
               wroteToFolder = true;
-              logLine(outName + ' — ' + rowLabel2 + ' written to folder', 'ok');
+              logLine(outName + ' — ' + outLabel + ' written to folder', 'ok');
             } catch (folderErr) {
               logLine(outName + ' — couldn\'t write to folder (' + folderErr.message + '), downloading instead', 'warn');
             }
           }
           if (!wroteToFolder) {
             downloadBlob(outBuf, outName, blobType);
-            logLine(outName + ' — ' + rowLabel2 + ' downloaded', 'ok');
+            logLine(outName + ' — ' + outLabel + ' downloaded', 'ok');
             await new Promise(function (r) { setTimeout(r, 350); });
           }
         } catch (err) {
@@ -464,6 +487,8 @@
       var added = 0;
       rest.forEach(function (p) {
         target.result = appendRows(target.result, p.result);
+        // Auto-run: fold the report-date-only copies the same way, so the file written out matches.
+        if (target.writeResult && p.writeResult) target.writeResult = appendRows(target.writeResult, p.writeResult);
         added += p.result.rows.length;
         processed.splice(processed.indexOf(p), 1);
         logLine(p.f.name + ' — ' + p.result.rows.length.toLocaleString() + ' ring main unit rows merged into the DT / Substation file (' + target.f.name + ')', 'ok');
@@ -670,7 +695,25 @@
       if (!date) { autoStatus.textContent = 'Pick the report date first.'; return; }
       autoBtn.disabled = true;
       try {
-        autoStatus.textContent = '1/4 Loading and inspecting ' + files.length + ' zip(s)…';
+        // First, while this click can still grant permission: bring back the remembered
+        // output folder so the exports are written straight there without asking again.
+        // (Writing uses getFileHandle + createWritable, which overwrites a file of the
+        // same name silently — no prompt, no renamed copy.)
+        var folderNote = '';
+        if (dirHandle) {
+          folderNote = ' Exports will be saved to the folder "' + dirHandle.name + '" (same-name files are overwritten).';
+        } else {
+          var restored0 = await restoreDirHandle();
+          if (restored0) {
+            dirHandle = restored0;
+            folderStatus.textContent = 'Output folder: "' + dirHandle.name + '" (remembered from last time). Files will be written directly there.';
+            folderStatus.classList.add('set');
+            folderNote = ' Exports will be saved to your remembered folder "' + dirHandle.name + '" (same-name files are overwritten).';
+          } else {
+            folderNote = ' No saved output folder could be used (none chosen yet, or permission was not granted), so the exports will download instead.';
+          }
+        }
+        autoStatus.textContent = '1/4 Loading and inspecting ' + files.length + ' zip(s)…' + folderNote;
         var n = await loadZips(files);
         if (!n) { autoStatus.textContent = 'No usable files were found in those zips.'; return; }
         // Auto-run uses the Date/Time source picked in the card where a file has that
@@ -678,10 +721,11 @@
         var source = ($('#mf-autoSource') && $('#mf-autoSource').value) || '__created';
         loadedFiles.forEach(function (f) { if (f.dateOptions.indexOf(source) >= 0) f.selectedDate = source; });
         renderFilesTable();
-        // Export everything (no date filtering in Step 4); the report picks the one date.
+        // Step 4's own date boxes stay cleared, so the processed data attached in Step 5
+        // keeps every date; only the files written out are limited to the report date.
         $('#mf-dateFrom').value = ''; $('#mf-dateTo').value = '';
-        autoStatus.textContent = '2/4 Processing and exporting…';
-        await runProcess(true);
+        autoStatus.textContent = '2/4 Processing and exporting (saved files: ' + date + ' only)…';
+        await runProcess(true, { writeDate: date });
         if (!processed.length) { autoStatus.textContent = 'Nothing was processed — see the log in Step 4.'; return; }
         autoStatus.textContent = '3/4 Attaching to the Upload Data Files boxes…';
         var attached = await attachProcessed();
@@ -689,7 +733,7 @@
         autoStatus.textContent = '4/4 Generating the report for ' + date + '…';
         $('#mf-repFrom').value = date; $('#mf-repTo').value = '';
         generateReportFor(date, '');
-        autoStatus.textContent = '✅ Done — exported, attached, and the report for ' + date + ' was generated. Open it with the Take me to Dashboard button.';
+        autoStatus.textContent = '✅ Done — the saved exports contain only ' + date + ', the attached data keeps every date, and the report for ' + date + ' was generated. Open it with the Take me to Dashboard button.';
       } catch (err) {
         autoStatus.textContent = 'Auto-run stopped: ' + err.message;
       } finally { autoBtn.disabled = false; }

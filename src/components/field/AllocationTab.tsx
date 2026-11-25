@@ -16,6 +16,7 @@ import { useConfirm } from "./ConfirmDialog";
 import { DtCheckDialog } from "./DtCheckDialog";
 import { DtFileCheckDialog } from "./DtFileCheckDialog";
 import { DtAppearedDialog } from "./DtAppearedDialog";
+import { DtExportDialog } from "./DtExportDialog";
 import { buildKml, dtKey, loadDtCoords, loadLookupCoords, ownCoords, type UnassignedRow } from "@/lib/dtCoords";
 
 const DEFAULT_KEY = "eih_alloc_default";
@@ -45,16 +46,23 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
   const [checkOpen, setCheckOpen] = useState(false);
   const [fileCheckOpen, setFileCheckOpen] = useState(false);
   const [appearedOpen, setAppearedOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [kmlBusy, setKmlBusy] = useState(false);
   // "Keep as default": this feeder and filter (for example Assigned (Ongoing)) open first, every time, on this device.
-  const [def, setDef] = useState<FeederDefault | null>(null);
+  // It is a per-device preference, so it applies to whoever uses this device — and it is the
+  // feeder that decides whether the 📌 button shows as saved (the saved filter comes along on entry).
+  const [def, setDef] = useState<FeederDefault | null>(() => readDefault());
   const appliedDef = useRef(false);
+  const userPicked = useRef(false);
   useEffect(() => {
-    const d = readDefault();
-    setDef(d);
-    if (isAdmin && d && !appliedDef.current && m.feederById.has(d.feederId)) { appliedDef.current = true; setFeederId(d.feederId); setStatusF(d.statusF); }
-  }, [m.feeders.length, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
-  const isDefault = !!def && def.feederId === feederId && def.statusF === statusF;
+    // Apply as soon as the saved feeder is in the list, even if the data arrived in stages —
+    // but never after the user has picked a feeder by hand during this visit.
+    if (appliedDef.current || userPicked.current || !def) return;
+    if (m.feederById.has(def.feederId)) { appliedDef.current = true; setFeederId(def.feederId); setStatusF(def.statusF); }
+  }, [def, m]);
+  const isDefault = !!def && def.feederId === feederId;
+  /** Every deliberate feeder change goes through here, so the saved default stops applying. */
+  function pickFeeder(id: string) { userPicked.current = true; setFeederId(id); }
   function saveDefault() {
     const d = { feederId, statusF };
     try { window.localStorage.setItem(DEFAULT_KEY, JSON.stringify(d)); } catch { /* private mode: not saved */ }
@@ -77,7 +85,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
     const t = v.trim().toLowerCase();
     if (!t) return;
     const hit = m.feeders.find((f) => `${f.feeder_name} ${f.feeder_id} ${f.area ?? ""}`.toLowerCase().includes(t));
-    if (hit) setFeederId(hit.feeder_id);
+    if (hit) pickFeeder(hit.feeder_id);
   }
 
   const openByEnum = useMemo(() => openDtsByEnumerator(m), [m]);
@@ -306,7 +314,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
 
   /** Jump to a DT: opens its feeder and filters the list down to it. */
   function goToDt(d: DT) {
-    setFeederId(d.feeder_id); setFq(""); setStatusF("all"); setQ(d.dt_id);
+    pickFeeder(d.feeder_id); setFq(""); setStatusF("all"); setQ(d.dt_id);
     window.scrollTo({ top: 0, behavior: "smooth" });
     toast.message(`Showing ${d.dt_name || d.dt_id}`, { description: "Clear the DT search box to see all DTs again." });
   }
@@ -363,7 +371,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
               <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">1 · Feeder</div>
               <div className="flex flex-wrap gap-2">
                 <Input className="h-11 w-full sm:w-56" placeholder="Search feeder name or ID" value={fq} onChange={(e) => searchFeeder(e.target.value)} />
-                <select className={selectCls + " h-11 w-full font-bold sm:w-auto sm:min-w-72"} value={feederId} onChange={(e) => setFeederId(e.target.value)}>
+                <select className={selectCls + " h-11 w-full font-bold sm:w-auto sm:min-w-72"} value={feederId} onChange={(e) => pickFeeder(e.target.value)}>
               {!feederMatches.some((f) => f.feeder_id === feederId) && feeder && <option value={feederId}>{feeder.feeder_name} ({feeder.feeder_id})</option>}
               {feederMatches.map((f) => {
                 const s = feederStats(m, f.feeder_id);
@@ -372,14 +380,12 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
             </select>
                 {fq.trim() && <span className="self-center text-xs text-muted-foreground">{feederMatches.length} feeder{feederMatches.length === 1 ? "" : "s"} match</span>}
               </div>
-              {isAdmin && (
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" variant={isDefault ? "default" : "outline"} className="h-11" onClick={isDefault ? clearDefault : saveDefault}>
                   {isDefault ? "📌 Default saved · tap to clear" : "📌 Keep this feeder + filter as my default"}
                 </Button>
                 {def && !isDefault && <span className="text-xs text-muted-foreground">Opens on: {m.feederById.get(def.feederId)?.feeder_name ?? def.feederId}</span>}
               </div>
-              )}
             </div>
             <div className="space-y-2">
               <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">2 · Show</div>
@@ -410,6 +416,9 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
                 <Button variant="outline" className="h-11" onClick={() => setAppearedOpen(true)}>📍 Find unassigned DTs in a file</Button>
                 <Button variant="outline" className="h-11" onClick={() => void navigate({ to: "/map", search: { view: "unassigned", feeder: feeder?.feeder_name ?? "" } })}>🗺 Show unassigned on map</Button>
                 <Button variant="outline" className="h-11" disabled={kmlBusy || !stats.unassigned} onClick={() => void exportKmlUnassigned()}>{kmlBusy ? "Preparing…" : "🌍 Export KML (unassigned)"}</Button>
+                {isAdmin && feeder && (
+              <Button variant="outline" className="h-11" onClick={() => setExportOpen(true)}>📊 Export to Excel</Button>
+            )}
                 {isAdmin && feeder && (
               <Button variant={feeder.locked ? "default" : "outline"} className="h-11" onClick={toggleLock}>
                 {feeder.locked ? <><Lock /> Locked: unlock</> : <><Unlock /> Lock feeder</>}
@@ -541,6 +550,7 @@ export function AllocationTab({ m, isAdmin = false }: { m: Model; isAdmin?: bool
       <DtCheckDialog m={m} feederId={feederId} open={checkOpen} onOpenChange={setCheckOpen} onComplete={bulkComplete} busy={bulkBusy} />
       <DtFileCheckDialog m={m} feederId={feederId} open={fileCheckOpen} onOpenChange={setFileCheckOpen} onComplete={bulkComplete} busy={bulkBusy} />
       <DtAppearedDialog m={m} feederId={feederId} open={appearedOpen} onOpenChange={setAppearedOpen} onSaved={() => refresh()} />
+      <DtExportDialog m={m} feederId={feederId} open={exportOpen} onOpenChange={setExportOpen} />
       {dialog}
     </div>
   );
